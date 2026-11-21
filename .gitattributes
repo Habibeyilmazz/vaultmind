@@ -1,0 +1,3 @@
+# The example vault doubles as the test fixture: keep its line endings the same on every platform.
+* text=auto eol=lf
+*.png binary
