@@ -6,6 +6,7 @@ import type { Embedder } from "./embed.ts";
 import { loadEmbedder } from "./embed.ts";
 import type { IndexStats } from "./indexer.ts";
 import { embedPending, indexVault } from "./indexer.ts";
+import { hasEmbeddings } from "./search.ts";
 
 export interface VaultOptions {
   dir: string;
@@ -51,6 +52,14 @@ export class Vault {
       return embedder;
     });
     return this.#loading;
+  }
+
+  /**
+   * The embedder a query should use. Waits for the model only when the index already holds vectors, so the first
+   * query after start-up is not quietly keyword-only. An index without vectors never waits: it answers by keyword.
+   */
+  async queryEmbedder(): Promise<Embedder | null> {
+    return hasEmbeddings(this.db) ? this.loadEmbedder() : this.embedder;
   }
 
   /** Updates the keyword index from disk, unless that happened less than maxAgeMs ago. */

@@ -51,7 +51,7 @@ Use get_note to read a whole note once you know its path.`,
     },
     async ({ query, limit, offset, mode, response_format }) => {
       vault.keepFresh();
-      const result = await search(vault.db, query, { mode, limit, offset, embedder: vault.embedder });
+      const result = await search(vault.db, query, { mode, limit, offset, embedder: await vault.queryEmbedder() });
       const render = (hits: Hit[]) => {
         const nextOffset = offset + hits.length;
         const hasMore = result.total > nextOffset;

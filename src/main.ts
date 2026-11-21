@@ -103,7 +103,6 @@ export async function main(argv: string[]): Promise<number> {
       const text = rest.join(" ").trim();
       if (!text) throw new Error(`Usage: vaultmind ${command} <${command === "ask" ? "question" : "query"}>`);
       vault.sync();
-      if (stats(vault.db).embedded) await vault.loadEmbedder();
 
       if (command === "ask") {
         const result = await ask(vault, text);
@@ -116,7 +115,7 @@ export async function main(argv: string[]): Promise<number> {
         const result = await search(vault.db, text, {
           mode: values.mode as SearchMode,
           limit: integer(values.limit, "limit", 1, 100),
-          embedder: vault.embedder,
+          embedder: await vault.queryEmbedder(),
         });
         if (values.json) console.log(JSON.stringify(result, null, 2));
         else {

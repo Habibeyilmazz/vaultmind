@@ -54,7 +54,7 @@ function describe(error: unknown): AskError {
 export async function ask(vault: Vault, question: string, create?: CreateMessage): Promise<Answer> {
   if (!create && !askAvailable()) throw new AskError("Ask needs an Anthropic API key. Set ANTHROPIC_API_KEY and restart.");
   const model = process.env.VAULTMIND_ASK_MODEL || ASK_MODEL;
-  const { hits } = await search(vault.db, question, { limit: MAX_SOURCES, embedder: vault.embedder });
+  const { hits } = await search(vault.db, question, { limit: MAX_SOURCES, embedder: await vault.queryEmbedder() });
   if (hits.length === 0) return { answer: "Nothing in the vault matches this question.", sources: [], model };
 
   create ??= ((client) => (params) => client.beta.messages.create(params))(new Anthropic());

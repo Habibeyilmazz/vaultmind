@@ -80,6 +80,21 @@ test("web API: semantic search turns on once the vault is embedded", async () =>
   assert.equal((await get(vault, "/api/search?q=rain+gauge")).data.mode, "hybrid");
 });
 
+test("a query right after start-up waits for the model when the index already has vectors", async () => {
+  const dir = tempVault();
+  const earlier = new Vault({ dir, loader: async () => fakeEmbedder });
+  earlier.sync();
+  await earlier.embedPending();
+  earlier.close();
+
+  const slowModel = () => new Promise<typeof fakeEmbedder>((resolve) => setTimeout(() => resolve(fakeEmbedder), 50));
+  const vault = new Vault({ dir, loader: slowModel });
+  assert.equal((await get(vault, "/api/search?q=rain+gauge")).data.mode, "hybrid");
+  assert.equal((await get(vault, "/api/status")).data.semantic, true);
+  await vault.idle();
+  vault.close();
+});
+
 test("web server: static files, and no access from other hosts or methods", async () => {
   const vault = openVault();
   const page = await handle(vault, new Request("http://localhost:4100/"));
