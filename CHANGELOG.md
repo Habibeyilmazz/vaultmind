@@ -12,7 +12,7 @@ Used the product as an MCP memory: a note written while `serve` or `mcp` was run
 - Added: `serve` and `mcp` watch the vault folder (`fs.watch`, recursive) and re-index about 0.3 s after a change; a query arriving sooner re-indexes first. Adds, edits, deletes and new subfolders are picked up. Changes inside dot-folders (`.obsidian`, `.git`, our own `.vaultmind`) and `node_modules` are ignored, so writing the index does not trigger itself. New and changed notes are embedded in the background as before.
 - If the folder cannot be watched, the server logs it to stderr and falls back to the 30-second rescan. Watching never stops a server: a failed re-index is logged.
 - Tests: 57 unit/MCP tests (2 new; both fail when the re-index trigger or the dot-folder filter is removed). Checked by hand with `serve` on port 4100: a note added in a new subfolder was found 1 s later, and gone 0.1 s after deletion.
-- On Windows, reading a changed note is itself reported as a change (last-access time), so a re-index that read files is followed by one extra rescan, which only compares sizes and times and stops there.
+- On Windows CI a scan that read files was followed by change events for those files (most likely last-access times; inferred from CI, not inspected on a Windows machine), so a re-index that read files is followed by one extra rescan, which only compares sizes and times and stops there.
 - Not checked: watching on Windows and Linux outside CI, network drives, vaults with tens of thousands of files (each change rescans file sizes and times, not contents).
 
 ### Launch polish (2026-11-22)
