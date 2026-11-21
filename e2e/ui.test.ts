@@ -82,7 +82,8 @@ test("search as you type, open with Enter, follow links", async () => {
 
   assert.match((await page.textContent("#side"))!, /Linked notes \(3\)/);
   assert.match((await page.textContent("#side li:first-child"))!, /Weekend Loaf.*shares #baking/s);
-  assert.equal(await page.locator("#side .graph circle").count(), 4);
+  assert.equal(await page.locator("#side .graph circle:not(.halo)").count(), 4);
+  assert.equal(await page.locator("#side .graph .halo").count(), 1, "the note being read is marked");
 
   await page.click(".body a.wikilink >> text=Weekend Loaf");
   await page.waitForFunction(() => document.querySelector(".note h1")?.textContent === "Weekend Loaf");

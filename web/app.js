@@ -246,6 +246,7 @@ function drawGraph(graph, { width, height, focusId, label, colour }) {
       "a",
       { href: noteHref(node.path), class: [node.id === focusId ? "focus" : "", quiet && node.id !== focusId ? "quiet" : ""].join(" ").trim() || null },
       s("title", {}, `${node.title} (${plural(degree, "link")})`),
+      node.id === focusId && s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: (radius(degree) + 7).toFixed(1), class: "halo" }),
       s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: radius(degree).toFixed(1), class: colour(node.path) }),
       // The focused note needs no label: its title is the page heading.
       node.id !== focusId &&

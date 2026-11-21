@@ -64,7 +64,7 @@ The tools hand note text to the model as written. If your vault holds clipped we
 
 - **Hybrid search.** BM25 keyword ranking (SQLite FTS5) and vector similarity are fused with reciprocal rank fusion. Keyword search understands stemming (`fermenting` finds `ferment`) and ignores diacritics (`cafe` finds `café`).
 - **Embeddings on your machine.** `Xenova/all-MiniLM-L6-v2` through transformers.js on the CPU. Without it, search falls back to keywords on its own.
-- **Understands Obsidian notes.** YAML frontmatter (`title`, `tags`, `aliases`), inline `#tags` including `#nested/tags`, `[[wikilinks]]` with `|alias` and `#heading`, `![[embeds]]`, and relative Markdown links. Links resolve the way Obsidian does: path, then file name, then alias.
+- **Understands Obsidian notes.** YAML frontmatter (`title`, `tags`, `aliases`), inline `#tags` including `#nested/tags`, `[[wikilinks]]` with `|alias` and `#heading`, `![[embeds]]`, and relative Markdown links. Links resolve to the note next to the linking note first, then by path, file name and alias. Titles, aliases, headings and tags are all searchable.
 - **Heading-aware chunks.** Each section is indexed with its heading path (`Sourdough Starter > Feeding schedule`), so a hit points at the part of the note that matched.
 - **Incremental indexing.** Only new and changed files are read again. Deleted files leave the index.
 - **Web UI.** Search as you type, a reading view, related notes with reasons, the notes linked to the current one, and the link graph of the whole vault. Light and dark, works on a phone, keyboard friendly (`/` focuses search, arrow keys move through results).
@@ -146,6 +146,8 @@ npm run typecheck
 npm test              # parser, index, search, web API, ask (stubbed), MCP over stdio
 npm run e2e           # drives the web UI in Chromium; run `npx playwright install chromium` once
 ```
+
+`evals/example-vault.xml` holds ten question/answer pairs for the MCP server over the example vault, in the mcp-builder evaluation format. The answers were checked by hand; the set has not been run through an LLM harness yet.
 
 Tests run TypeScript directly with Node's type stripping, against a temporary copy of `examples/vault`. See [CHANGELOG.md](CHANGELOG.md) for what changed and what is next.
 

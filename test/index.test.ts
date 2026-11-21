@@ -86,6 +86,8 @@ test("keyword search: stemming, diacritics, tags, prefix, paging", async () => {
   assert.equal((await search(db, "cafe creme")).hits[0].title, "Espresso Dialing In");
   assert.ok((await search(db, "fermenting")).hits.length > 0, "porter stemming matches 'ferment'");
   assert.ok((await search(db, "electronics")).hits.some((h) => h.title === "Weather Station"), "tags are searchable");
+  assert.equal((await search(db, "SRS")).hits[0].title, "Spaced Repetition", "aliases are searchable");
+  assert.deepEqual((await search(db, "levain")).hits.map((h) => h.title).sort(), ["Sourdough Starter", "Weekend Loaf"]);
   assert.equal((await search(db, "sourd")).hits.length, 0);
   assert.equal((await search(db, "sourd", { prefix: true })).hits[0].title, "Sourdough Starter");
 

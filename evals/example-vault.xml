@@ -1,0 +1,47 @@
+<!--
+  Ten question/answer pairs for the MCP server over examples/vault, in the format used by the
+  mcp-builder evaluation harness. Every answer was checked by hand against the notes.
+  They have not been run through an LLM harness yet.
+-->
+<evaluation>
+  <qa_pair>
+    <question>The note about the garden's drip system depends on measurements from another project. In that other project's note, how many millimetres of rain does one tip of the rain gauge stand for?</question>
+    <answer>0.2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One note in the vault has the alias "Levain". A recipe note links to it. How many grams of water does that recipe use?</question>
+    <answer>375</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user's own sleep rules are based on a book they took notes on. What bedroom temperature, in degrees Celsius, do those rules set?</question>
+    <answer>18</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Exactly one note links to a note that does not exist. What is the title of the missing note?</question>
+    <answer>Fermentation Science</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user toured a coffee roaster on a city trip. On which day number of the itinerary did that happen?</question>
+    <answer>4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The trip note says the beans brought home sent the user back to another note. In that note's baseline recipe, how many grams of liquid should come out of the shot?</question>
+    <answer>36</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The note with the alias "SRS" lists the review intervals for a card that keeps being answered correctly. What is the longest interval, in days?</question>
+    <answer>35</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user is training for a race. In week 24 of the training log, how many kilometres was the Sunday long run?</question>
+    <answer>16</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>According to the firmware section of the solar powered sensor mast note, what is the average current draw in microamps?</question>
+    <answer>180</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which note is most closely related to "Sleep Routine"? Give its title.</question>
+    <answer>Why We Sleep</answer>
+  </qa_pair>
+</evaluation>

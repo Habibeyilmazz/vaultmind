@@ -7,6 +7,7 @@
   --moss: #2a6449;
   --marker: #f7e05a;
   --marker-ink: #1d2b24;
+  --focus: #1d2b24;
   --ui: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
   --read: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -26,6 +27,7 @@
     --soft: #9db0a4;
     --line: #2f4038;
     --moss: #8fd0aa;
+    --focus: #f7e05a;
     --f0: #9db0a4;
     --f1: #8fd0aa;
     --f2: #7fbfe0;
@@ -56,7 +58,7 @@ a {
   text-underline-offset: 0.18em;
 }
 :focus-visible {
-  outline: 3px solid var(--marker);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -132,7 +134,9 @@ mark {
 }
 .search input:focus {
   outline: 0;
-  box-shadow: 0 5px 0 -1px var(--marker);
+  border-bottom-width: 3px;
+  margin-bottom: -1px;
+  box-shadow: 0 6px 0 -1px var(--marker);
 }
 button {
   font: 600 0.95rem/1 var(--ui);
@@ -454,11 +458,18 @@ h2 {
 .graph a.near text {
   display: inline;
 }
-.graph a:hover circle,
-.graph a:focus-visible circle,
-.graph a.focus circle {
+.graph a:hover circle {
   stroke: var(--marker);
   stroke-width: 5;
+}
+.graph a:focus-visible circle {
+  stroke: var(--focus);
+  stroke-width: 4;
+}
+/* The note being read sits on a highlighter spot. */
+.graph .halo {
+  fill: var(--marker);
+  stroke: none;
 }
 .graph a.focus text {
   font-weight: 700;

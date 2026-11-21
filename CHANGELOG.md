@@ -20,6 +20,7 @@ First release.
 - Optional `ask`: answers with citations through the Anthropic API when `ANTHROPIC_API_KEY` is set.
 - Synthetic example vault in `examples/vault`, used by the tests and the screenshots.
 - CI: typecheck, unit and MCP tests, build, CLI smoke test, browser tests.
+- `evals/example-vault.xml`: ten hand-checked question/answer pairs for the MCP server (not yet run through an LLM harness).
 
 ### Known gaps
 
