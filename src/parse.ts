@@ -25,8 +25,9 @@ export const MAX_CHUNK_CHARS = 1000;
 
 const FENCE = /^\s*(`{3,}|~{3,})/;
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
-const WIKILINK = /!?\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
-const MD_LINK = /\[[^\]]*\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)/g;
+// No "[" inside a link: each attempt then stops at the next link start, so a line of "[[[[..." is linear, not quadratic.
+const WIKILINK = /!?\[\[([^[\]|#]*)(?:#[^[\]|]*)?(?:\|[^[\]]*)?\]\]/g;
+const MD_LINK = /\[[^[\]]*\]\(([^[)\s#]+\.md)(?:#[^)\s]*)?\)/g;
 const INLINE_TAG = /(?<=^|\s)#([\p{L}_][\p{L}\p{N}_/-]*)/gu;
 
 function stringList(value: unknown): string[] {

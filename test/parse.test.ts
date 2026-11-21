@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MAX_CHUNK_CHARS, parseNote } from "../src/parse.ts";
+import { renderNote } from "../src/render.ts";
 
 test("frontmatter: title, tags, aliases", () => {
   const note = parseNote("a/b.md", "---\ntitle: Real Title\ntags: [Baking, '#bread']\naliases: Levain, Mother\n---\n# Heading\nbody");
@@ -77,4 +78,13 @@ test("long sections are split at paragraph breaks", () => {
 test("a note with no body text gets one chunk made of its headings", () => {
   assert.deepEqual(parseNote("n.md", "---\ntitle: T\n---\n# One\n\n## Two\n").chunks, [{ heading: "", text: "One\nTwo", line: 4 }]);
   assert.deepEqual(parseNote("n.md", "").chunks, [{ heading: "", text: "", line: 1 }]);
+});
+
+test("a hostile note full of unclosed link openers is parsed in linear time", () => {
+  // Before the fix each "[[" scanned to the end of the line: a 400 KB note took minutes and froze the server.
+  const start = performance.now();
+  for (const unit of ["[[", "![[", "[[a|", "[[a#", "[a]("]) parseNote("x.md", `${unit.repeat(100_000)}\n[[Real Note]] and [x](other.md)`);
+  for (const unit of ["[[", "![[", "[[a|", "[[a#"]) renderNote(unit.repeat(50_000), () => undefined);
+  assert.ok(performance.now() - start < 2000, `took ${Math.round(performance.now() - start)} ms`);
+  assert.deepEqual(parseNote("x.md", "[[[[Real Note]] [a [b](c.md)").links, ["Real Note", "c.md"]);
 });

@@ -45,7 +45,8 @@ export function renderNote(body: string, resolve: (target: string) => string | u
         level: "inline",
         start: (src) => src.match(/!?\[\[/)?.index,
         tokenizer(src) {
-          const match = /^!?\[\[([^\]|#]*)(#[^\]|]*)?(?:\|([^\]]*))?\]\]/.exec(src);
+          // Same classes as WIKILINK in parse.ts: no "[" inside, so a long run of "[[" stays linear.
+          const match = /^!?\[\[([^[\]|#]*)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]/.exec(src);
           if (!match) return undefined;
           const target = match[1].trim();
           const heading = match[2]?.slice(1).trim();
