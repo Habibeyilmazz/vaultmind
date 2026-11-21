@@ -58,3 +58,11 @@ test("writeNote does not follow symbolic links out of the vault", { skip: proces
   mkdirSync(join(dir, "real"));
   assert.equal(writeNote(dir, "real/ok", "fine").created, true);
 });
+
+test("writeNote refuses a path Obsidian's Excluded files setting covers, since it would never be indexed", () => {
+  const dir = tempVault();
+  mkdirSync(join(dir, ".obsidian"));
+  writeFileSync(join(dir, ".obsidian/app.json"), JSON.stringify({ userIgnoreFilters: ["Archive/"] }));
+  assert.throws(() => writeNote(dir, "Archive/Old idea", "x"), /Excluded files/);
+  assert.deepEqual(writeNote(dir, "Archived thought", "x"), { path: "Archived thought.md", created: true });
+});

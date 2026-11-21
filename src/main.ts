@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { obsidianExcludes } from "./indexer.ts";
 import type { SearchMode } from "./search.ts";
 import { HL_END, HL_START, parseQuery, search, stats } from "./search.ts";
 import { Vault, VERSION } from "./vault.ts";
@@ -83,6 +84,8 @@ export async function main(argv: string[]): Promise<number> {
     if (command === "index") {
       const started = Date.now();
       const changed = vault.sync()!;
+      const excludes = obsidianExcludes(vault.dir);
+      if (excludes.length) err(`Leaving out notes under Obsidian's "Excluded files": ${excludes.join(", ")}`);
       err(
         `Scanned ${changed.scanned} notes: ${changed.added} added, ${changed.updated} updated, ${changed.removed} removed` +
           (changed.skipped ? `, ${changed.skipped} skipped (unreadable or over 5 MB).` : "."),

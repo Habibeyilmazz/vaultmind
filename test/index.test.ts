@@ -50,6 +50,28 @@ test("listNotes skips dot-directories and non-markdown files", () => {
   assert.ok(files.includes("kitchen/Sourdough Starter.md"));
 });
 
+test("notes under Obsidian's Excluded files setting leave the index, and come back when the setting is cleared", async () => {
+  const { dir, db } = indexed();
+  mkdirSync(join(dir, "Templates"));
+  writeFileSync(join(dir, "Templates/Daily.md"), "# {{date}}\n\nsourdough placeholder");
+  writeFileSync(join(dir, "Templates.md"), "# About templates"); // a plain prefix also covers a same-named note, as in Obsidian
+  mkdirSync(join(dir, ".obsidian"));
+  const settings = (filters: unknown) => writeFileSync(join(dir, ".obsidian/app.json"), JSON.stringify({ userIgnoreFilters: filters }));
+  settings(["Templates", "/^travel\\/.*Trip/", "/[unclosed/", 7]);
+  const files = listNotes(dir);
+  assert.ok(!files.some((f) => f.startsWith("Templates")), "prefix entry");
+  assert.ok(!files.includes("travel/Lisbon Trip.md"), "regex entry");
+  assert.ok(files.includes("kitchen/Sourdough Starter.md"), "an invalid regex or a non-string entry excludes nothing");
+  const before = indexVault(db, dir);
+  assert.equal(before.removed, 1, "Lisbon Trip was indexed before the setting existed");
+  assert.equal(getNote(db, "Lisbon Trip"), undefined);
+  assert.ok(!(await search(db, "placeholder")).hits.length);
+
+  writeFileSync(join(dir, ".obsidian/app.json"), "{ not json");
+  assert.equal(indexVault(db, dir).added, 3, "broken settings exclude nothing");
+  assert.equal((await search(db, "placeholder")).hits[0].path, "Templates/Daily.md");
+});
+
 test("indexing is incremental: unchanged files are skipped, edits and deletions are picked up", async () => {
   const { dir, db } = indexed();
   assert.deepEqual(indexVault(db, dir), { scanned: 13, added: 0, updated: 0, removed: 0, skipped: 0 });

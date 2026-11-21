@@ -21,8 +21,42 @@ const SKIP_DIRS = new Set(["node_modules"]);
 /** Larger files are almost always pasted binary data, not notes. */
 export const MAX_NOTE_BYTES = 5 * 1024 * 1024;
 
-/** All .md files under dir as vault-relative POSIX paths. Dot-directories (.obsidian, .git, .trash) are skipped. */
+/** The entries of Obsidian's "Excluded files" setting (Settings > Files and links), or [] when there are none. */
+export function obsidianExcludes(dir: string): string[] {
+  try {
+    const filters = JSON.parse(readFileSync(join(dir, ".obsidian", "app.json"), "utf8")).userIgnoreFilters;
+    return Array.isArray(filters) ? filters.filter((f): f is string => typeof f === "string" && f.trim() !== "") : [];
+  } catch {
+    return []; // no Obsidian settings, or settings we cannot read: exclude nothing
+  }
+}
+
+/**
+ * Tests a vault-relative POSIX path against excluded-files entries, read the way Obsidian reads them:
+ * "/.../" is a regular expression, anything else a path prefix ("Templates/" covers the whole folder).
+ */
+export function excluder(filters: string[]): (path: string) => boolean {
+  const tests = filters.flatMap((filter): ((path: string) => boolean)[] => {
+    if (filter.length > 2 && filter.startsWith("/") && filter.endsWith("/")) {
+      try {
+        const re = new RegExp(filter.slice(1, -1));
+        return [(path) => re.test(path)];
+      } catch {
+        return []; // Obsidian ignores an entry that is not a valid regular expression, and so do we
+      }
+    }
+    const prefix = filter.normalize("NFC");
+    return [(path) => path.startsWith(prefix)];
+  });
+  return (path) => tests.some((matches) => matches(path.normalize("NFC")));
+}
+
+/**
+ * All .md files under dir as vault-relative POSIX paths. Dot-directories (.obsidian, .git, .trash) are skipped,
+ * and so are notes matching Obsidian's "Excluded files" setting.
+ */
 export function listNotes(dir: string): string[] {
+  const excluded = excluder(obsidianExcludes(dir));
   const out: string[] = [];
   const walk = (current: string) => {
     let entries: Dirent[];
@@ -39,7 +73,8 @@ export function listNotes(dir: string): string[] {
       if (entry.isDirectory()) {
         if (!SKIP_DIRS.has(entry.name)) walk(full);
       } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-        out.push(relative(dir, full).split(sep).join("/"));
+        const path = relative(dir, full).split(sep).join("/");
+        if (!excluded(path)) out.push(path);
       }
     }
   };

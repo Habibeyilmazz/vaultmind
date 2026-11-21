@@ -1,6 +1,6 @@
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { MAX_NOTE_BYTES } from "./indexer.ts";
+import { excluder, MAX_NOTE_BYTES, obsidianExcludes } from "./indexer.ts";
 
 /**
  * Checks a vault-relative note path given by a model and returns it as POSIX segments with ".md" on the end.
@@ -26,10 +26,11 @@ export function notePath(input: string): string {
 /**
  * Creates a note, or appends to one. Never overwrites, renames or deletes: creating fails when the file exists.
  * Appending starts the new text on its own paragraph and creates the note when it is missing.
- * Refuses to go through symbolic links, which the indexer does not follow either.
+ * Refuses to go through symbolic links, which the indexer does not follow either, and excluded paths, which it skips.
  */
 export function writeNote(vaultDir: string, input: string, content: string, append = false): { path: string; created: boolean } {
   const path = notePath(input);
+  if (excluder(obsidianExcludes(vaultDir))(path)) throw new Error(`Cannot write '${path}': Obsidian's "Excluded files" setting covers it, so it would never be searchable. Choose another folder.`);
   const parts = path.split("/");
   let existing: ReturnType<typeof lstatSync> | undefined;
   for (let i = 1; i <= parts.length; i++) {
