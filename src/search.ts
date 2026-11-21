@@ -144,7 +144,8 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
       title: row.title,
       heading: row.heading,
       line: row.line,
-      snippet: entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text),
+      // Wikilink brackets are noise in a one-line excerpt.
+      snippet: (entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text)).replace(/\[\[|\]\]/g, ""),
       text: row.text,
       tags: tagsOf(db, row.noteId),
       score: entry.score,
