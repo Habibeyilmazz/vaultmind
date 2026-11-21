@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### First-run review (2026-11-22)
+
+Cloned the repository fresh into a separate folder and followed the README quickstart word for word (macOS, Node 22.23, npm 12.2): `npm install` (3 s, the install-script warning appears as the README says), `npm run build`, `index` (model downloaded, 44/44 sections embedded, 4.2 s), `search`, `serve` on 4100 (looked at in Chromium: home graph, search, note view, no console errors), `mcp` over stdio (initialize, tools/list, search_notes), and `ask` without a key (clear error, exit 1).
+
+- Fixed: every search result showed the same excerpt, taken from whichever section matched first (on the quickstart query, all six hits showed the Home note's list of areas). This came in with the performance pass's "excerpt for the returned page only". node:sqlite binds JS numbers as REAL, and FTS5 (SQLite 3.51) then drops `rowid = ?` and returns the first match. The query now casts to INTEGER. Affected the CLI, the web UI and nothing else (MCP returns full section text). The new test fails without the fix.
+- Fixed: `index` and `/api/status` said 31 links where the web UI's graph said 30 for the same vault. Two wikilinks from one note to the same note (`[[Levain]]` and `[[Sourdough Starter]]`) counted twice. Links are now counted the way the graph counts them: one per pair of notes, self-links left out. Test.
+- Reviewed, no change: `ask.ts` request shape (model, effort, citations, server-side fallback) matches the current API documentation; MCP tool handlers; web server Host and Origin checks; the indexer.
+- Seen once, not reproduced: the "watched vault re-indexes on its own" test failed one full `npm test` run out of ten on this machine while other jobs were running. The next nine runs passed. No cause found.
+- Still not done: `ask` against the live API (no key used in this run); the web UI looked at by eye on Windows; the per-note graph endpoint (opening a note still downloads the whole graph).
+
 ### Performance and accessibility pass (2026-11-22)
 
 Measured on a generated vault of 10,000 notes (50,000 sections, 150,000 links, 78 MB of Markdown; Apple M3 Pro, keyword mode) before changing anything.
