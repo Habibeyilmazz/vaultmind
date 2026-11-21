@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, symlinkSync, watch, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -359,10 +359,13 @@ test("a change in a watched vault makes the next query rescan, unless it is insi
     vault.watch(60_000); // long delay: only the next query may re-index
     await sleep(500); // macOS may still report the fixture copy made just before watching
     vault.sync();
+    const seen: string[] = [];
+    const spy = watch(dir, { recursive: true }, (event, name) => seen.push(`${event} ${name}`));
     mkdirSync(join(dir, ".obsidian"), { recursive: true });
     writeFileSync(join(dir, ".obsidian", "workspace.json"), "{}");
     await sleep(400);
-    assert.equal(vault.sync(30_000), undefined, ".obsidian change caused a rescan");
+    spy.close();
+    assert.equal(vault.sync(30_000), undefined, `.obsidian change caused a rescan; events: ${seen.join(", ")}`);
 
     writeFileSync(join(dir, "zebracorn.md"), "# Zebracorn\n");
     let stats;
