@@ -121,8 +121,10 @@ export async function main(argv: string[]): Promise<number> {
           limit: integer(values.limit, "limit", 1, 100),
           embedder: await vault.queryEmbedder(),
         });
-        if (values.json) console.log(JSON.stringify(result, null, 2));
-        else {
+        if (values.json) {
+          for (const hit of result.hits) hit.snippet = hit.snippet.replaceAll(HL_START, "").replaceAll(HL_END, ""); // markers are for the terminal and web UI
+          console.log(JSON.stringify(result, null, 2));
+        } else {
           // Bold titles and matches, dim locations; plain text when piped or when NO_COLOR is set (no-color.org).
           const color = process.stdout.isTTY && !process.env.NO_COLOR;
           const sgr = (code: string, text: string) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
