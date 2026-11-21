@@ -12,6 +12,7 @@ const client = new Client({ name: "vaultmind-test", version: "1.0.0" });
 
 before(async () => {
   writeFileSync(join(dir, "Long.md"), `# Long\n\n${"lorem ipsum dolor sit amet ".repeat(1500)}`);
+  writeFileSync(join(dir, "Emoji.md"), `${"a".repeat(24_999)}😀😀 end`);
   await client.connect(
     new StdioClientTransport({
       command: process.execPath,
@@ -71,7 +72,7 @@ test("related_notes and recent_notes", async () => {
   const related = await client.callTool({ name: "related_notes", arguments: { note: "Sleep Routine" } });
   assert.match(text(related), /- Why We Sleep \(reading\/Why We Sleep\.md\): .*shares #health/);
   const recent = await client.callTool({ name: "recent_notes", arguments: { limit: 3 } });
-  assert.match(text(recent), /# Recently modified notes \(1-3 of 14\)/);
+  assert.match(text(recent), /# Recently modified notes \(1-3 of 15\)/);
   assert.match(text(recent), /More: call again with offset=3\./);
 });
 
@@ -108,4 +109,21 @@ test("bad input comes back as a tool error the model can act on", async () => {
   const semantic = await client.callTool({ name: "search_notes", arguments: { query: "bread", mode: "semantic" } });
   assert.equal(semantic.isError, true);
   assert.match(text(semantic), /Semantic search is unavailable/);
+});
+
+const wellFormed = (s: string) => !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
+
+test("get_note never cuts an emoji in half at a page boundary", async () => {
+  const body = `${"a".repeat(24_999)}😀😀 end`;
+  const call = async (offset: number) =>
+    (await client.callTool({ name: "get_note", arguments: { note: "Emoji", offset, response_format: "json" } })).structuredContent as {
+      body: string;
+      has_more: boolean;
+      next_offset: number;
+    };
+  const first = await call(0);
+  assert.ok(wellFormed(first.body), "first page ends in half an emoji");
+  const second = await call(first.next_offset);
+  assert.ok(wellFormed(second.body));
+  assert.equal(first.body + second.body, body);
 });

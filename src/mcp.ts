@@ -129,7 +129,9 @@ Use search_notes first when you do not know which note you need.`,
       vault.keepFresh();
       const note = getNote(vault.db, name);
       if (!note) throw notFound(name);
-      const body = note.body.slice(offset, offset + CHARACTER_LIMIT);
+      let end = offset + CHARACTER_LIMIT;
+      if (end < note.body.length && /[\ud800-\udbff]/.test(note.body[end - 1])) end--; // do not cut an emoji in half
+      const body = note.body.slice(offset, end);
       const nextOffset = offset + body.length;
       const hasMore = nextOffset < note.body.length;
       const data = {
