@@ -356,8 +356,11 @@ test("a change in a watched vault makes the next query rescan, unless it is insi
   const dir = tempVault();
   const vault = new Vault({ dir, dbPath: ":memory:", embed: false });
   try {
+    vault.sync();
     vault.watch(60_000); // long delay: only the next query may re-index
-    await sleep(500); // macOS may still report the fixture copy made just before watching
+    // Let stray events pass: macOS may still report the fixture copy, Windows reports the reads of the first sync
+    // as last-access changes. The second sync only stats files, which reports nothing.
+    await sleep(500);
     vault.sync();
     const seen: string[] = [];
     const spy = watch(dir, { recursive: true }, (event, name) => seen.push(`${event} ${name}`));
