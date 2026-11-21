@@ -51,6 +51,19 @@ test("a '#' line inside a code fence is not a heading", () => {
   assert.match(chunks[0].text, /# comment/);
 });
 
+test("a fence closes only on its own marker, so nested fences do not swallow the rest of the note", () => {
+  const note = parseNote("n.md", "# A\n~~~\n```\n# not a heading [[InFence]]\n~~~\n\n## B\n````md\n```\n# still code\n```\n````\nafter #tag [[Out]]");
+  assert.deepEqual(note.chunks.map((chunk) => chunk.heading), ["A", "A > B"]);
+  assert.deepEqual(note.links, ["Out"]);
+  assert.deepEqual(note.tags, ["tag"]);
+});
+
+test("links and tags written in a heading count", () => {
+  const note = parseNote("n.md", "# Title\n\n## See [[Other Note]] and [md](sub/Third.md) #topic\n\ntext");
+  assert.deepEqual(note.links, ["Other Note", "sub/Third.md"]);
+  assert.deepEqual(note.tags, ["topic"]);
+});
+
 test("long sections are split at paragraph breaks", () => {
   const paragraph = "word ".repeat(120).trim(); // 599 chars
   const chunks = parseNote("n.md", `# Long\n${paragraph}\n\n${paragraph}\n\n${paragraph}`).chunks;

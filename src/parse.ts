@@ -23,7 +23,7 @@ export interface ParsedNote {
 /** Sections longer than this are split at paragraph breaks. Small enough for a 256-token embedding model. */
 export const MAX_CHUNK_CHARS = 1000;
 
-const FENCE = /^\s*(```|~~~)/;
+const FENCE = /^\s*(`{3,}|~{3,})/;
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const WIKILINK = /!?\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
 const MD_LINK = /\[[^\]]*\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)/g;
@@ -71,7 +71,8 @@ export function parseNote(path: string, raw: string): ParsedNote {
   const headingPath: string[] = [];
   let firstH1 = "";
   const headings: string[] = [];
-  let inFence = false;
+  /** The marker that opened the code fence we are in, e.g. "```" or "~~~~". Empty outside a fence. */
+  let fence = "";
   let section: string[] = [];
   let sectionLine = offset + 1;
 
@@ -84,13 +85,31 @@ export function parseNote(path: string, raw: string): ParsedNote {
     section = [];
   };
 
+  // Links and tags count wherever they are written, in a heading as much as in the text under it.
+  const scan = (line: string) => {
+    const prose = line.replace(/`[^`]*`/g, "");
+    for (const m of prose.matchAll(INLINE_TAG)) tags.add(m[1].toLowerCase());
+    for (const m of prose.matchAll(WIKILINK)) if (m[1].trim()) links.add(m[1].trim());
+    for (const m of prose.matchAll(MD_LINK)) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(m[1])) continue; // http:, obsidian:, ...
+      try {
+        links.add(decodeURIComponent(m[1]));
+      } catch {
+        links.add(m[1]);
+      }
+    }
+  };
+
   body.split(/\r?\n/).forEach((line, index) => {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
+    const marker = FENCE.exec(line)?.[1];
+    if (fence) {
+      // Only the same character, at least as long, closes a fence: ``` inside ~~~ or ```` is just text.
+      if (marker?.startsWith(fence)) fence = "";
       section.push(line);
       return;
     }
-    if (inFence) {
+    if (marker) {
+      fence = marker;
       section.push(line);
       return;
     }
@@ -103,20 +122,11 @@ export function parseNote(path: string, raw: string): ParsedNote {
       headings.push(heading[2]);
       if (level === 1 && !firstH1) firstH1 = heading[2];
       sectionLine = offset + index + 1;
+      scan(heading[2]);
       return;
     }
     section.push(line);
-    const prose = line.replace(/`[^`]*`/g, "");
-    for (const m of prose.matchAll(INLINE_TAG)) tags.add(m[1].toLowerCase());
-    for (const m of prose.matchAll(WIKILINK)) if (m[1].trim()) links.add(m[1].trim());
-    for (const m of prose.matchAll(MD_LINK)) {
-      if (/^[a-z][a-z0-9+.-]*:/i.test(m[1])) continue; // http:, obsidian:, ...
-      try {
-        links.add(decodeURIComponent(m[1]));
-      } catch {
-        links.add(m[1]);
-      }
-    }
+    scan(line);
   });
   flush();
   // A stub or outline with no body text still gets one chunk, so its title and headings are searchable.
