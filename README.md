@@ -1,0 +1,152 @@
+# vaultmind
+
+Local-first search and an MCP server for a folder of Markdown notes (an Obsidian vault works as is).
+It indexes your notes into one SQLite file, searches them by keyword and by meaning with a small model that runs on your machine, and lets Claude use the vault as memory. No account, no API key.
+
+![The link graph of the example vault](docs/screenshots/graph.png)
+
+![Search results, a note, and its connections](docs/screenshots/note.png)
+
+## Quickstart
+
+You need Node.js 22.18 or newer and git. The repository ships a small made-up vault to try things on.
+
+```bash
+git clone https://github.com/Habibeyilmazz/vaultmind.git
+cd vaultmind
+npm install
+npm run build
+
+node dist/cli.js index  --vault examples/vault
+node dist/cli.js search "when should the garden be watered" --vault examples/vault
+node dist/cli.js serve  --vault examples/vault      # then open http://127.0.0.1:4100
+```
+
+The first `index` downloads the embedding model (about 23 MB) from the Hugging Face hub. If that is not possible, or you pass `--no-embed`, everything still works with keyword search.
+
+Point `--vault` at your own notes folder when you are ready. vaultmind only reads your notes. The one thing it writes is its index, at `<vault>/.vaultmind/index.db` (use `--db` to put it elsewhere, and add `.vaultmind/` to `.gitignore` if the vault is a git repository).
+
+## Use your vault from Claude
+
+vaultmind speaks the Model Context Protocol over stdio. Use absolute paths.
+
+Claude Code:
+
+```bash
+claude mcp add vaultmind -- node /absolute/path/to/vaultmind/dist/cli.js mcp --vault /absolute/path/to/your/vault
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vaultmind": {
+      "command": "node",
+      "args": ["/absolute/path/to/vaultmind/dist/cli.js", "mcp", "--vault", "/absolute/path/to/your/vault"]
+    }
+  }
+}
+```
+
+| Tool | What it does |
+| --- | --- |
+| `search_notes` | Finds notes for words or a question and returns the best matching section of each, with path, heading and line. Paginated. |
+| `get_note` | Returns one note by path, file name, alias or title: body, tags, frontmatter, outgoing links, backlinks. Long notes come in pieces. |
+| `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
+| `recent_notes` | Lists the most recently modified notes. |
+
+All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call).
+
+## Features
+
+- **Hybrid search.** BM25 keyword ranking (SQLite FTS5) and vector similarity are fused with reciprocal rank fusion. Keyword search understands stemming (`fermenting` finds `ferment`) and ignores diacritics (`cafe` finds `café`).
+- **Embeddings on your machine.** `Xenova/all-MiniLM-L6-v2` through transformers.js on the CPU. Without it, search falls back to keywords on its own.
+- **Understands Obsidian notes.** YAML frontmatter (`title`, `tags`, `aliases`), inline `#tags` including `#nested/tags`, `[[wikilinks]]` with `|alias` and `#heading`, `![[embeds]]`, and relative Markdown links. Links resolve the way Obsidian does: path, then file name, then alias.
+- **Heading-aware chunks.** Each section is indexed with its heading path (`Sourdough Starter > Feeding schedule`), so a hit points at the part of the note that matched.
+- **Incremental indexing.** Only new and changed files are read again. Deleted files leave the index.
+- **Web UI.** Search as you type, a reading view, related notes with reasons, the notes linked to the current one, and the link graph of the whole vault. Light and dark, works on a phone, keyboard friendly (`/` focuses search, arrow keys move through results).
+- **Ask your vault (optional).** With `ANTHROPIC_API_KEY` set, `vaultmind ask "..."` and the Ask button in the web UI answer a question from the best matching sections and cite them. Without a key the button does not appear and nothing else changes.
+
+## How it works
+
+```
+notes/*.md ──parse──▶ sections, tags, links ──▶ SQLite (.vaultmind/index.db)
+                                                  ├─ notes, chunks, tags, links
+                                                  ├─ chunks_fts   (FTS5, BM25)
+                                                  └─ chunk vectors (384 floats each)
+
+query ─┬─ FTS5 MATCH, bm25() ───────┐
+       └─ embed, cosine over chunks ─┴─▶ reciprocal rank fusion ─▶ best section per note
+```
+
+- `src/parse.ts` turns a file into title, tags, links and heading-scoped chunks (split at paragraph breaks above 1,000 characters).
+- `src/indexer.ts` walks the vault, skips dot-folders such as `.obsidian`, compares size and modification time, then a content hash, and rewrites only what changed.
+- `src/search.ts` holds search, related notes, recent notes and the graph. Vectors are compared by brute force, which is fast at personal-vault size.
+- `src/mcp.ts`, `src/web.ts` and `src/main.ts` are thin fronts over the same functions. The web server is one `Request -> Response` function with a strict Content-Security-Policy; note content is rendered on the server with raw HTML escaped.
+
+Uses Node's built-in `node:sqlite`, so there is no native module to compile.
+
+Measured on an Apple M3 Pro with a generated vault of 2,000 notes (12,000 sections): keyword index 0.3 s, embedding all sections 35 s, a re-index with nothing changed 0.2 s including process start, a hybrid query through the web API about 50 ms, index file 35 MB. It has not been measured on anything larger.
+
+## Command line
+
+```
+vaultmind index              Build or update the index
+vaultmind search <query>     Search from the terminal
+vaultmind serve              Start the web UI on 127.0.0.1
+vaultmind mcp                Run the MCP server on stdio
+vaultmind ask <question>     Answer from your notes with citations (needs ANTHROPIC_API_KEY)
+
+--vault <dir>     Vault folder (default: $VAULTMIND_VAULT, else the current directory)
+--db <file>       Index file (default: <vault>/.vaultmind/index.db)
+--no-embed        Keyword search only
+--model <id>      Embedding model on the Hugging Face hub
+--mode <mode>     search: auto | keyword | semantic
+-n, --limit <n>   search: number of results
+--json            search, ask: print JSON
+-p, --port <n>    serve: port (default 4100)
+```
+
+Run it as `node dist/cli.js ...`, or `npm link` once to get a `vaultmind` command.
+
+## Privacy
+
+Indexing, search, the MCP server and the web UI run entirely on your machine. The web UI listens on `127.0.0.1` only, refuses requests addressed to other host names, and never loads remote images from notes.
+
+Two things use the network, both optional:
+
+- the one-time model download from the Hugging Face hub;
+- `ask`, which sends your question and up to eight matching note sections to the Anthropic API. It is off unless `ANTHROPIC_API_KEY` is set. The model defaults to `claude-opus-5-5`; set `VAULTMIND_ASK_MODEL` to change it.
+
+## Limitations
+
+- `ask` is tested against a stubbed Anthropic client only. It has not been run against the live API in this release.
+- The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
+- The link graph has no zoom or pan. It reads well up to a few hundred notes and turns into a dense cloud beyond that.
+- Search returns one hit per note (its best section) chosen from the 100 best-ranked sections of each ranking.
+- Developed on macOS and tested on Linux in CI. Windows is untested.
+- Not published to npm; install from this repository.
+
+## Roadmap
+
+- Filter search by tag and folder
+- File watching instead of the 30-second rescan
+- Zoom, pan and filtering in the link graph
+- A multilingual embedding model option that is actually tested
+- Publish to npm so `npx vaultmind` works
+- A vector index for vaults far beyond 50,000 sections
+
+## Development
+
+```bash
+npm run typecheck
+npm test              # parser, index, search, web API, ask (stubbed), MCP over stdio
+npm run e2e           # drives the web UI in Chromium; run `npx playwright install chromium` once
+```
+
+Tests run TypeScript directly with Node's type stripping, against a temporary copy of `examples/vault`. See [CHANGELOG.md](CHANGELOG.md) for what changed and what is next.
+
+## License
+
+[MIT](LICENSE)
