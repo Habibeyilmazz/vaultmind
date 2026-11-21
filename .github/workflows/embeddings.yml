@@ -1,0 +1,35 @@
+# Runs the real embedding model on each platform. Manual, because it downloads the model from the Hugging Face hub
+# and a network hiccup there should not turn every push red. Start it with: gh workflow run embeddings.yml
+name: Embeddings (manual)
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  real-model:
+    name: real model (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Index the example vault with the real model, then search by meaning
+        run: |
+          node dist/cli.js index --vault examples/vault | tee index.txt
+          grep -q "Search mode: hybrid" index.txt
+          node dist/cli.js search "when should the garden be watered" --mode semantic -n 1 --vault examples/vault | tee search.txt
+          grep -q "Garden Irrigation" search.txt
