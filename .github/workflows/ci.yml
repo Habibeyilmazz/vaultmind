@@ -24,7 +24,7 @@ jobs:
           # 22.18.0 is the oldest Node the README promises; it also runs the browser tests.
           - { os: ubuntu-latest, node: "22.18.0", browser: true }
           - { os: ubuntu-latest, node: "24" }
-          - { os: windows-latest, node: "22" }
+          - { os: windows-latest, node: "22", browser: true }
     defaults:
       run:
         shell: bash

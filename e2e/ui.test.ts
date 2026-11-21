@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { Server } from "node:http";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { after, before, test } from "node:test";
 import type { Browser, Page } from "playwright";
 import { chromium } from "playwright";
@@ -45,7 +45,7 @@ after(async () => {
 test("home shows the whole link graph and recent notes", async () => {
   const page = await open();
   await page.waitForSelector("#main .graph circle");
-  assert.equal(await page.textContent("#status"), `${vault.dir.split("/").pop()}: 14 notes, keyword search`);
+  assert.equal(await page.textContent("#status"), `${basename(vault.dir)}: 14 notes, keyword search`);
   assert.equal(await page.locator("#main .graph circle").count(), 14);
   assert.deepEqual(await page.locator(".legend li").allTextContents(), ["health", "kitchen", "projects", "reading", "travel", "everything else"]);
   assert.equal(await page.locator("#list li").count(), 14);
