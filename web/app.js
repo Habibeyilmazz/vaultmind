@@ -32,6 +32,11 @@ const main = $("main");
 const side = $("side");
 let currentPath = null;
 let graphCache = null;
+let status = null;
+
+function showStatus() {
+  $("status").textContent = `${status.vault}: ${plural(status.notes, "note")}, ${status.semantic ? "hybrid" : "keyword"} search`;
+}
 
 // ---------- list column: recent notes or search results ----------
 
@@ -85,6 +90,11 @@ async function runSearch() {
     if (!query) return await showRecent(run);
     const result = await api(`/api/search?limit=30&q=${encodeURIComponent(query)}`);
     if (run !== searchRun) return; // a newer keystroke already answered
+    // On a first run the embeddings arrive while the page is open: keep the header in step with what search does.
+    if (status && status.semantic !== (result.mode === "hybrid")) {
+      status.semantic = result.mode === "hybrid";
+      showStatus();
+    }
     renderList(
       `${plural(result.total, "note")} for “${query}”`,
       result.total === 0 ? "Nothing matches. Try fewer or different words." : `${result.mode} search, best section per note`,
@@ -469,8 +479,8 @@ function route() {
 window.addEventListener("hashchange", route);
 
 try {
-  const status = await api("/api/status");
-  $("status").textContent = `${status.vault}: ${plural(status.notes, "note")}, ${status.semantic ? "hybrid" : "keyword"} search`;
+  status = await api("/api/status");
+  showStatus();
   $("ask").hidden = !status.ask;
   if (status.ask) q.placeholder = "Search your notes, or ask a question";
   await showRecent();
