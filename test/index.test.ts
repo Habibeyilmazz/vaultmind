@@ -81,6 +81,13 @@ test("keyword search ranks the right section first and highlights matches", asyn
   assert.equal(new Set(result.hits.map((h) => h.path)).size, result.hits.length, "one hit per note");
 });
 
+test("search excerpts keep list items apart with a bullet", async () => {
+  const { db } = indexed();
+  const hit = (await search(db, "anemometer")).hits[0];
+  assert.equal(hit.heading, "Weather Station > Open questions");
+  assert.match(hit.snippet, /^• Does the rain gauge .*winter\? • Wind speed/);
+});
+
 test("keyword search: stemming, diacritics, tags, prefix, paging", async () => {
   const { db } = indexed();
   assert.equal((await search(db, "cafe creme")).hits[0].title, "Espresso Dialing In");

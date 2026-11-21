@@ -165,8 +165,9 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
       title: row.title,
       heading: row.heading,
       line: row.line,
-      // Wikilink brackets and table rules are noise in a short excerpt.
+      // Wikilink brackets and table rules are noise in a short excerpt; list items run together without a bullet.
       snippet: (entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text))
+        .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "• ")
         .replace(/\[\[|\]\]/g, "")
         .replace(/\||-{3,}/g, " ")
         .replace(/\s+/g, " ")
