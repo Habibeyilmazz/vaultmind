@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Watch the vault (2026-11-22)
+
+Used the product as an MCP memory: a note written while `serve` or `mcp` was running stayed unfindable for up to 30 seconds (checked: a new note was missing from `/api/search` one second after it was written). First item on the roadmap.
+
+- Added: `serve` and `mcp` watch the vault folder (`fs.watch`, recursive) and re-index about 0.3 s after a change; a query arriving sooner re-indexes first. Adds, edits, deletes and new subfolders are picked up. Changes inside dot-folders (`.obsidian`, `.git`, our own `.vaultmind`) and `node_modules` are ignored, so writing the index does not trigger itself. New and changed notes are embedded in the background as before.
+- If the folder cannot be watched, the server logs it to stderr and falls back to the 30-second rescan. Watching never stops a server: a failed re-index is logged.
+- Tests: 57 unit/MCP tests (2 new; both fail when the re-index trigger or the dot-folder filter is removed). Checked by hand with `serve` on port 4100: a note added in a new subfolder was found 1 s later, and gone 0.1 s after deletion.
+- Not checked: watching on Windows and Linux outside CI, network drives, vaults with tens of thousands of files (each change rescans file sizes and times, not contents).
+
 ### Launch polish (2026-11-22)
 
 - Added: `docs/demo.gif`, recorded from the running app on the example vault by `scripts/demo.ts` (needs ffmpeg), at the top of the README.
@@ -118,4 +127,5 @@ First release.
 - Screenshots: `node src/cli.ts serve --vault examples/vault`, then `node scripts/screenshots.ts`.
 - Unit tests never download the model; `test/helpers.ts` has a hashing stand-in. To try the real model, run `node src/cli.ts index --vault examples/vault`.
 - Filters: `parseQuery()` and `filterNotes()` in `src/search.ts` are the only places that understand `tag:` / `path:`; every front goes through them.
-- Next steps, in rough order of value: file watching, graph filtering (could reuse `filterNotes`), a tested multilingual model, npm publishing.
+- `Vault.watch()` only marks the index stale and schedules `keepFresh()`; all re-indexing still goes through `sync()`.
+- Next steps, in rough order of value: graph filtering (could reuse `filterNotes`), a tested multilingual model, npm publishing.

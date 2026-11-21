@@ -62,7 +62,7 @@ Claude Desktop (`claude_desktop_config.json`):
 | `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
 | `recent_notes` | Lists the most recently modified notes, or with `tags` / `folder` every note that matches, newest first. |
 
-All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call). If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
+All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and watches it while it runs: a note you add, edit, rename or delete is searchable about half a second later, so Claude can find a note it just wrote. Where the folder cannot be watched (some network drives), it rescans at most every 30 seconds, on the next tool call. If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
 
 The tools hand note text to the model as written. If your vault holds clipped web pages, their text reaches the model too.
 
@@ -150,7 +150,6 @@ I have not benchmarked vaultmind against any of these, so no claim here is about
 
 ## Roadmap
 
-- File watching instead of the 30-second rescan
 - Filtering in the link graph
 - A multilingual embedding model option that is actually tested
 - Publish to npm so `npx vaultmind` works
