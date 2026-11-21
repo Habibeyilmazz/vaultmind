@@ -18,6 +18,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/*.test.ts\"",
+    "e2e": "node --test \"e2e/*.test.ts\"",
     "start": "node src/cli.ts"
   },
   "dependencies": {
