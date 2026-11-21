@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vaultmind/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+.DS_Store
+*.log
+test-results/
