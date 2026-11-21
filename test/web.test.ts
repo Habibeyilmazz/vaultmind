@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { test } from "node:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { ask, AskError } from "../src/ask.ts";
@@ -199,4 +200,49 @@ test("ask: no matching notes means no API call; refusals and failures become rea
     }),
     (error) => error instanceof AskError && /socket hang up/.test(error.message),
   );
+});
+
+test("ask: the real SDK client reaches the API over HTTP (a local stand-in here) and the answer comes back cited", async () => {
+  const port = Number(process.env.ASK_TEST_PORT ?? 4108);
+  const seen: { url?: string; beta: unknown; body: Record<string, any> }[] = [];
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw) as Record<string, any>;
+    seen.push({ url: req.url, beta: req.headers["anthropic-beta"], body });
+    const citation = { type: "char_location", cited_text: "30 minutes at dawn", document_index: 0, document_title: null, start_char_index: 0, end_char_index: 18 };
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify({
+        id: "msg_1",
+        type: "message",
+        role: "assistant",
+        model: body.model,
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [{ type: "text", text: "At dawn.", citations: [citation] }],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  const saved = { key: process.env.ANTHROPIC_API_KEY, url: process.env.ANTHROPIC_BASE_URL };
+  process.env.ANTHROPIC_API_KEY = "not-a-real-key";
+  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${port}`;
+  try {
+    const answer = await ask(openVault(), "when should the garden be watered");
+    assert.equal(answer.answer, "At dawn. [1]");
+    assert.equal(answer.sources[0].path, "projects/Garden Irrigation.md");
+    assert.equal(seen.length, 1);
+    assert.match(seen[0].url ?? "", /^\/v1\/messages/);
+    assert.match(String(seen[0].beta), /server-side-fallback/);
+    assert.equal(seen[0].body.messages[0].content[0].type, "document");
+  } finally {
+    for (const [name, value] of [["ANTHROPIC_API_KEY", saved.key], ["ANTHROPIC_BASE_URL", saved.url]] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    server.closeAllConnections();
+    server.close();
+  }
 });

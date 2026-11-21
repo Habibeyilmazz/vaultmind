@@ -125,7 +125,7 @@ Two things use the network, both optional:
 
 ## Limitations
 
-- `ask` is tested against a stubbed Anthropic client only. It has not been run against the live API in this release.
+- `ask` has never run against the live Anthropic API (no key was available while building). Tests cover it with a stubbed client and with the real SDK talking HTTP to a local stand-in server, so whether the live API accepts the request exactly as sent is still unconfirmed.
 - The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
 - The link graph has no zoom or pan. It reads well up to a few hundred notes and turns into a dense cloud beyond that.
 - Symbolic links inside the vault are not followed, so a linked note or folder is not indexed.
@@ -146,7 +146,7 @@ Two things use the network, both optional:
 
 ```bash
 npm run typecheck
-npm test              # parser, index, search, web API, ask (stubbed), MCP over stdio
+npm test              # parser, index, search, web API, ask (stubbed and against a local stand-in), MCP over stdio
 npm run e2e           # drives the web UI in Chromium; run `npx playwright install chromium` once
 ```
 

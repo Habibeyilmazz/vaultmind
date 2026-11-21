@@ -24,7 +24,7 @@ Found by cloning the repository fresh, following the README literally, and readi
 
 ### Known gaps
 
-- `ask` has still never run against the live Anthropic API (no key on the build machine); only the stubbed client is tested.
+- `ask` has still never run against the live Anthropic API (no key on the build machine). A new test sends it through the real SDK over HTTP to a local stand-in server (port 4108, `ASK_TEST_PORT` overrides), which covers the client wiring but not what the live API accepts.
 - English-only stop words, stemming and default embedding model.
 - No zoom or pan in the link graph.
 - The web UI has not been opened in a browser on Windows (its API tests do run there).
