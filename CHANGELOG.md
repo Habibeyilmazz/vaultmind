@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Obsidian's Excluded files (2026-11-22)
+
+Used the CLI on a copy of the example vault with a `Templates/` folder, as most Obsidian vaults have: template text (`{{title}}`, placeholder checklists) showed up in search results, and Obsidian's own setting for hiding such folders was ignored. The previous round's gaps were checked: CJK per-character matching is a documented trade-off (recall over precision), not a bug; Windows by eye, Claude Desktop and live `ask` still cannot be done from here.
+
+- Added: notes matched by Obsidian's "Excluded files" setting (`userIgnoreFilters` in `.obsidian/app.json`) are left out of the index. Plain entries are path prefixes, `/.../` entries are regular expressions; an invalid regular expression, a non-string entry or unreadable settings exclude nothing. Notes already indexed leave the index on the next sync and come back when the setting is cleared. `index` prints the entries it applied.
+- Added: `write_note` refuses a path the setting covers, with an error that says why (the note would never be searchable).
+- Tests: 2 new (69 in all). Tried by hand with `index` and `search` on a synthetic vault.
+- Not done: no flag to ignore the setting; a changed setting is not picked up by the file watcher (it skips `.obsidian`), only by the next rescan; Obsidian's exact matching rules were not checked against Obsidian itself (written from how the setting is documented and stored).
+
 ### Launch pass (2026-11-22)
 
 Checked README, CONTRIBUTING, issue templates, repo description and topics against the code: all present and accurate, so no change there. Only the open bug from last round was worth fixing.
