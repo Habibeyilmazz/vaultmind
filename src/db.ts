@@ -49,12 +49,26 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHO
 export function openDb(file: string): Db {
   if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
-  // WAL lets the web UI, the MCP server and the CLI use the same index at once.
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
-  const { user_version: version } = db.prepare("PRAGMA user_version").get() as { user_version: number };
-  if (version !== SCHEMA_VERSION) {
-    db.exec("DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS chunks_fts; DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS meta;");
-    db.exec(`${SCHEMA} PRAGMA user_version = ${SCHEMA_VERSION};`);
+  db.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
+  // WAL lets the web UI, the MCP server and the CLI use the same index at once. Switching to it needs a lock that
+  // SQLite's busy timeout does not wait for, so processes opening a new index together must retry by hand.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      db.exec("PRAGMA journal_mode = WAL");
+      break;
+    } catch (error) {
+      if (attempt >= 100 || (error as { errcode?: number }).errcode !== 5) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+  const current = () => (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (current() !== SCHEMA_VERSION) {
+    // Check again inside the write lock: a process that got there first has already built the schema.
+    transaction(db, () => {
+      if (current() === SCHEMA_VERSION) return;
+      db.exec("DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS chunks_fts; DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS meta;");
+      db.exec(`${SCHEMA} PRAGMA user_version = ${SCHEMA_VERSION};`);
+    });
   }
   return db;
 }

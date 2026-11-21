@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { test } from "node:test";
 import { openDb } from "../src/db.ts";
 import { embedPending, indexVault, listNotes } from "../src/indexer.ts";
 import { allTags, filterNotes, ftsQuery, getNote, HL_START, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "../src/search.ts";
 import { fakeEmbedder, tempVault } from "./helpers.ts";
+
+const execFileAsync = promisify(execFile);
 
 function indexed() {
   const dir = tempVault();
@@ -284,5 +288,20 @@ test("a folder the user cannot read is skipped instead of stopping the whole ind
     assert.ok(notes.length > 5 && !notes.includes("locked/secret.md"));
   } finally {
     chmodSync(join(dir, "locked"), 0o755);
+  }
+});
+
+test("several processes opening and indexing one brand-new index at once all succeed", async () => {
+  const dir = tempVault();
+  const db = join(dir, "..", `${dir.split(/[\\/]/).pop()}-index.db`);
+  const script = `import { openDb } from ${JSON.stringify(new URL("../src/db.ts", import.meta.url).href)};
+import { indexVault } from ${JSON.stringify(new URL("../src/indexer.ts", import.meta.url).href)};
+indexVault(openDb(process.argv[1]), process.argv[2]);`;
+  for (let round = 0; round < 10; round++) {
+    const file = `${db}.${round}`;
+    const runs = Array.from({ length: 8 }, () => execFileAsync(process.execPath, ["--input-type=module", "-e", script, file, dir]));
+    const results = await Promise.allSettled(runs);
+    const failed = results.filter((r) => r.status === "rejected");
+    assert.equal(failed.length, 0, String((failed[0] as PromiseRejectedResult | undefined)?.reason?.stderr ?? ""));
   }
 });
