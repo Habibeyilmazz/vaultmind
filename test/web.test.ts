@@ -74,7 +74,18 @@ test("web API: status, search, note, related, recent, graph", async () => {
   assert.equal((await get(vault, "/api/related?path=Sleep%20Routine")).data.related[0].title, "Why We Sleep");
   assert.equal((await get(vault, "/api/related?path=nope")).response.status, 404);
   assert.equal((await get(vault, "/api/recent?limit=5")).data.notes.length, 5);
-  assert.equal((await get(vault, "/api/graph")).data.nodes.length, 13);
+  const whole = (await get(vault, "/api/graph")).data;
+  assert.equal(whole.nodes.length, 13);
+  assert.equal(whole.folders.kitchen, 3);
+  assert.equal(Object.values(whole.folders).reduce((a: number, b) => a + (b as number), 0), 13);
+
+  // One note's neighbourhood: itself, every note it links to or is linked from, and only the links among those.
+  const local = (await get(vault, `/api/graph?path=${encodeURIComponent("kitchen/Sourdough Starter.md")}`)).data;
+  assert.deepEqual(local.nodes.map((node: { title: string }) => node.title), ["Home", "Espresso Dialing In", "Sourdough Starter", "Weekend Loaf"]);
+  const ids = new Set(local.nodes.map((node: { id: number }) => node.id));
+  assert.ok(local.edges.length > 0 && local.edges.every((edge: { source: number; target: number }) => ids.has(edge.source) && ids.has(edge.target)));
+  assert.deepEqual(local.folders, whole.folders, "colours stay the same as on the whole graph");
+  assert.equal((await get(vault, "/api/graph?path=nope")).response.status, 404);
 });
 
 test("web API: semantic search turns on once the vault is embedded", async () => {

@@ -33,7 +33,6 @@ const list = $("list");
 const main = $("main");
 const side = $("side");
 let currentPath = null;
-let graphCache = null;
 let status = null;
 
 function showStatus() {
@@ -222,11 +221,10 @@ function layout(nodes, edges, width, height) {
 
 /**
  * A colour for each of the six largest top-level folders; everything else shares grey.
- * Computed over the whole vault so the small and the large graph agree.
+ * `folders` counts the whole vault (the server sends it with every graph) so the small and the large graph agree.
  */
-function folderPalette(nodes) {
-  const sizes = new Map();
-  for (const node of nodes) sizes.set(folderOf(node.path), (sizes.get(folderOf(node.path)) ?? 0) + 1);
+function folderPalette(folders) {
+  const sizes = new Map(Object.entries(folders));
   const named = [...sizes.keys()].filter(Boolean).sort((a, b) => sizes.get(b) - sizes.get(a) || a.localeCompare(b)).slice(0, 6).sort();
   const colour = (path) => `f${named.indexOf(folderOf(path)) + 1}`;
   const dot = (cls) => s("svg", { viewBox: "0 0 10 10", "aria-hidden": "true" }, s("circle", { cx: 5, cy: 5, r: 5, class: cls }));
@@ -404,7 +402,6 @@ async function showGraph() {
   const mine = ++view;
   const graph = await api("/api/graph");
   if (mine !== view) return;
-  graphCache = graph;
   currentPath = null;
   markCurrent();
   side.hidden = true;
@@ -414,7 +411,7 @@ async function showGraph() {
     return;
   }
   const shown = busiest(graph);
-  const { colour, legend } = folderPalette(graph.nodes);
+  const { colour, legend } = folderPalette(graph.folders);
   const slot = h("div", { class: "graph" });
   const zoomButton = (text, name, factor) => {
     const button = h("button", { type: "button", "aria-label": name, title: name }, text);
@@ -474,14 +471,15 @@ async function showNote(path) {
   const mine = ++view;
   let note;
   let related;
+  let graph;
   try {
     const loaded = await Promise.all([
       api(`/api/note?path=${encodeURIComponent(path)}`),
       api(`/api/related?path=${encodeURIComponent(path)}`),
-      api("/api/graph"),
+      api(`/api/graph?path=${encodeURIComponent(path)}`),
     ]);
     if (mine !== view) return;
-    [note, { related }, graphCache] = loaded;
+    [note, { related }, graph] = loaded;
   } catch (error) {
     if (mine !== view) return;
     currentPath = null;
@@ -515,16 +513,10 @@ async function showNote(path) {
   main.scrollTop = 0;
 
   // Connections: this note, its direct neighbours, and the links among them.
-  const self = graphCache.nodes.find((node) => node.path === note.path);
-  const near = new Set([self?.id]);
-  for (const edge of graphCache.edges) {
-    if (edge.source === self?.id) near.add(edge.target);
-    if (edge.target === self?.id) near.add(edge.source);
-  }
-  const local = { nodes: graphCache.nodes.filter((node) => near.has(node.id)), edges: graphCache.edges };
+  const self = graph.nodes.find((node) => node.path === note.path);
   const parts = [
-    h("h2", {}, near.size > 1 ? `Linked notes (${near.size - 1})` : "No links yet"),
-    near.size > 1 && h("div", { class: "graph" }),
+    h("h2", {}, graph.nodes.length > 1 ? `Linked notes (${graph.nodes.length - 1})` : "No links yet"),
+    graph.nodes.length > 1 && h("div", { class: "graph" }),
     h("h2", {}, "Related"),
     related.length
       ? h("ul", {}, related.map((item) => h("li", {}, h("a", { href: noteHref(item.path) }, item.title), h("span", { class: "why" }, item.reasons.join(", ")))))
@@ -537,11 +529,11 @@ async function showNote(path) {
   // Drawn at the size it really gets (the column is narrower on a desktop than on a phone), so names stay 12.5px.
   const slot = side.querySelector(".graph");
   slot?.replaceWith(
-    drawGraph(local, {
+    drawGraph(graph, {
       width: Math.round(slot.clientWidth),
       height: Math.round(slot.clientHeight),
       focusId: self.id,
-      colour: folderPalette(graphCache.nodes).colour,
+      colour: folderPalette(graph.folders).colour,
       label: "This note and the notes it is linked with",
     }),
   );

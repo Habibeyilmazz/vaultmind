@@ -90,8 +90,11 @@ export async function handle(vault: Vault, request: Request): Promise<Response> 
     }
     case "/api/recent":
       return json(recentNotes(db, boundedInt(url.searchParams.get("limit"), 30, 200) || 30));
-    case "/api/graph":
-      return json(linkGraph(db));
+    case "/api/graph": {
+      // With ?path= only the note's neighbourhood: the whole graph of a 10,000-note vault is 5 MB.
+      const graph = linkGraph(db, url.searchParams.has("path") ? param("path") : undefined);
+      return graph ? json(graph) : fail(404, "No such note.");
+    }
     case "/api/note": {
       const note = getNote(db, param("path"));
       if (!note) return fail(404, "No such note. It may have been renamed or deleted.");

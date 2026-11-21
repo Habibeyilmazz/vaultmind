@@ -410,13 +410,35 @@ export function recentNotes(db: Db, limit = 10, offset = 0, filter?: NoteFilter)
 export interface Graph {
   nodes: { id: number; path: string; title: string; tags: string[] }[];
   edges: { source: number; target: number }[];
+  /** Notes per top-level folder ("" for the vault root), over the whole vault, so every graph colours folders alike. */
+  folders: Record<string, number>;
 }
 
-export function linkGraph(db: Db): Graph {
-  const nodes = db.prepare("SELECT id, path, title FROM notes ORDER BY path").all() as { id: number; path: string; title: string }[];
+const LINKS = "SELECT DISTINCT src AS source, dst AS target FROM links WHERE dst IS NOT NULL AND dst != src";
+
+/** The whole link graph, or with `name` only that note, the notes it links with, and the links among them. */
+export function linkGraph(db: Db): Graph;
+export function linkGraph(db: Db, name?: string): Graph | undefined;
+export function linkGraph(db: Db, name?: string): Graph | undefined {
+  const folders = db
+    .prepare("SELECT CASE WHEN instr(path, '/') > 0 THEN substr(path, 1, instr(path, '/') - 1) ELSE '' END AS folder, count(*) AS n FROM notes GROUP BY folder")
+    .all() as { folder: string; n: number }[];
+  let nodes: { id: number; path: string; title: string }[];
+  let edges: Graph["edges"];
+  if (name === undefined) {
+    nodes = db.prepare("SELECT id, path, title FROM notes ORDER BY path").all() as typeof nodes;
+    edges = db.prepare(LINKS).all() as unknown as Graph["edges"];
+  } else {
+    const self = noteRow(db, name);
+    if (!self) return undefined;
+    const near = `SELECT dst FROM links WHERE src = :id AND dst IS NOT NULL UNION SELECT src FROM links WHERE dst = :id UNION SELECT :id`;
+    nodes = db.prepare(`SELECT id, path, title FROM notes WHERE id IN (${near}) ORDER BY path`).all({ id: self.id }) as typeof nodes;
+    edges = db.prepare(`${LINKS} AND src IN (${near}) AND dst IN (${near})`).all({ id: self.id }) as unknown as Graph["edges"];
+  }
   return {
     nodes: nodes.map((node) => ({ ...node, tags: tagsOf(db, node.id) })),
-    edges: db.prepare("SELECT DISTINCT src AS source, dst AS target FROM links WHERE dst IS NOT NULL AND dst != src").all() as unknown as Graph["edges"],
+    edges,
+    folders: Object.fromEntries(folders.map((row) => [row.folder, row.n])),
   };
 }
 
