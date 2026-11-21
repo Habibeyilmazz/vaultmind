@@ -75,6 +75,30 @@ test("related_notes and recent_notes", async () => {
   assert.match(text(recent), /More: call again with offset=3\./);
 });
 
+test("search_notes and recent_notes filter by tags and folder", async () => {
+  const filtered = await client.callTool({ name: "search_notes", arguments: { query: "sleep", folder: "reading", response_format: "json" } });
+  const page = filtered.structuredContent as { results: { path: string }[] };
+  assert.ok(page.results.length > 0);
+  assert.ok(page.results.every((r) => r.path.startsWith("reading/")));
+
+  const operators = await client.callTool({ name: "search_notes", arguments: { query: "tag:project/active" } });
+  assert.match(text(operators), /^# 1 note match "tag:project\/active" among notes tagged #project\/active/);
+  assert.match(text(operators), /## Weather Station/);
+
+  const both = await client.callTool({ name: "search_notes", arguments: { query: "water tag:project", tags: ["#garden"] } });
+  assert.match(text(both), /among notes tagged #project and #garden/);
+  assert.match(text(both), /## Garden Irrigation/);
+  assert.doesNotMatch(text(both), /## Weather Station/);
+
+  const unknown = await client.callTool({ name: "search_notes", arguments: { query: "water", tags: ["gardening"] } });
+  assert.match(text(unknown), /^No note is tagged #gardening\. Tags in this vault \(most used first\): #health \(3\),.*#garden \(1\)/);
+
+  const books = await client.callTool({ name: "recent_notes", arguments: { tags: ["book"] } });
+  assert.match(text(books), /^# Recently modified notes tagged #book \(1-2 of 2\)/);
+  const none = await client.callTool({ name: "recent_notes", arguments: { folder: "nowhere" } });
+  assert.match(text(none), /^No note is in folder 'nowhere'\./);
+});
+
 test("bad input comes back as a tool error the model can act on", async () => {
   const missing = await client.callTool({ name: "get_note", arguments: { note: "No Such Note" } });
   assert.equal(missing.isError, true);
