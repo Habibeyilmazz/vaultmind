@@ -288,6 +288,7 @@ test("recent notes and link graph", () => {
   const ids = new Set(graph.nodes.map((n) => n.id));
   assert.ok(graph.edges.length >= 20);
   assert.ok(graph.edges.every((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target));
+  assert.equal(stats(db).links, graph.edges.length, "`index` and the web UI report the same link count");
 });
 
 test("a folder the user cannot read is skipped instead of stopping the whole index", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {

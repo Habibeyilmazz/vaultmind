@@ -426,7 +426,8 @@ export function stats(db: Db): { notes: number; chunks: number; embedded: number
     notes: one("SELECT count(*) AS n FROM notes"),
     chunks: one("SELECT count(*) AS n FROM chunks"),
     embedded: one("SELECT count(*) AS n FROM chunks WHERE embedding IS NOT NULL"),
-    links: one("SELECT count(*) AS n FROM links WHERE dst IS NOT NULL"),
+    // Counted like the link graph: one per pair of notes, so `[[Levain]]` and `[[Sourdough Starter]]` to the same note are one link.
+    links: one("SELECT count(*) AS n FROM (SELECT DISTINCT src, dst FROM links WHERE dst IS NOT NULL AND dst != src)"),
     tags: one("SELECT count(DISTINCT tag) AS n FROM tags"),
   };
 }
