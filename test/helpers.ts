@@ -1,13 +1,25 @@
-import { cpSync, mkdtempSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Embedder } from "../src/embed.ts";
 
 export const FIXTURE = join(import.meta.dirname, "..", "examples", "vault");
 
-/** A private, writable copy of the fixture vault. */
+const temps: string[] = [];
+process.on("exit", () => {
+  for (const dir of temps) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Windows refuses to delete an index file that is still open; the OS temp cleaner gets it later.
+    }
+  }
+});
+
+/** A private, writable copy of the fixture vault, deleted when the test process exits. */
 export function tempVault(): string {
   const dir = mkdtempSync(join(tmpdir(), "vaultmind-test-"));
+  temps.push(dir);
   cpSync(FIXTURE, dir, { recursive: true });
   return dir;
 }
