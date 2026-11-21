@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Filter by tag and folder (2026-11-22)
+
+Used the product as a newcomer for the "feature" round. The thing most missed: no way to say "only my project notes" or "only this folder", in the web UI, the CLI or the MCP tools. It was also first on the roadmap.
+
+- Added: `tag:<tag>` and `path:<folder>` in the search box and in `vaultmind search`, alone or with words (Obsidian's own operator names). Nested tags count (`tag:project` finds `#project/active`), several `tag:` must all match, folders include subfolders, matching ignores case, quoted values may hold spaces. A filter with no words lists every matching note, newest first.
+- Added: MCP `search_notes` and `recent_notes` take `tags` (array) and `folder`; `search_notes` also reads the operators in `query`. When no note has the tag or the folder is empty, the reply says so and lists the vault's tags with counts, so the model can retry with a real one.
+- Added: tags in a note's header are buttons; one click lists every note with that tag through the search box.
+- The filter is applied inside both rankings (keyword SQL and the vector scan), not to the top 100 afterwards, so a filtered search is never short of results that exist.
+- Fixed: a note with a long run of `[a](`, `[a](<` or `![a](` took quadratic time to render in the web UI (the new regression test took 12 s before the fix, 0.4 s after). The cause was our own wikilink extension's `start()` (it searched the rest of the paragraph once per `[`), not `marked`; removing it makes those inputs linear. Regression test.
+- Known gap, found while checking that fix: `marked` itself is quadratic on a long run of `*a` (128 KB: about 2 s). Web view only.
+- Tests: 48 unit/MCP tests (4 new), 14 browser tests (1 new). README screenshots not retaken: the tag buttons look the same as before until hovered.
+
 ### Security pass (2026-11-22)
 
 Reviewed every trust boundary (web API and Host check, `/api/ask`, note rendering, MCP inputs, the indexer, the CI workflows), ran `npm audit` (0 vulnerabilities) and searched the git history for keys and personal data (none).
@@ -13,7 +25,7 @@ Reviewed every trust boundary (web API and Host check, `/api/ask`, note renderin
 - Fixed: a note containing a long run of unclosed `[[`, `![[`, `[[a|` or `[a](` took quadratic time to index and render (a 400 KB note: minutes, with the web and MCP servers frozen). Link targets, headings and labels can no longer contain `[`, which Obsidian does not allow in link names anyway.
 - CI: actions pinned to commit SHAs, and `actions/checkout` no longer leaves the token in `.git/config`. Workflows already had `contents: read` only.
 - Checked and left as is: the note renderer (raw HTML escaped, links allow-listed, tried 20+ XSS payloads), `/api/ask` cross-site protection (Origin + JSON content type), FTS query quoting, YAML alias bombs (the `yaml` package caps them), static file serving (fixed map, no path joins), symlinks (skipped).
-- Known gap: `marked` itself is quadratic on a long run of `[a](` (about 3 s for 256 KB). It only affects opening that note in the web UI, not indexing or MCP.
+- Known gap (fixed later the same day, see above): a long run of `[a](` rendered in quadratic time.
 - Stopped four leftover `serve` processes from earlier runs on ports 4100-4103.
 
 ### Design pass (2026-11-22)
@@ -85,4 +97,5 @@ First release.
 - `src/web.ts` exports `handle(vault, Request)`; test the API through it instead of opening a port. `e2e/ui.test.ts` starts a real server on port 4107 (`E2E_PORT` overrides).
 - Screenshots: `node src/cli.ts serve --vault examples/vault`, then `node scripts/screenshots.ts`.
 - Unit tests never download the model; `test/helpers.ts` has a hashing stand-in. To try the real model, run `node src/cli.ts index --vault examples/vault`.
-- Next steps, in rough order of value: tag/folder filter for `search_notes` and the UI, file watching, graph filtering, a tested multilingual model, npm publishing.
+- Filters: `parseQuery()` and `filterNotes()` in `src/search.ts` are the only places that understand `tag:` / `path:`; every front goes through them.
+- Next steps, in rough order of value: file watching, graph filtering (could reuse `filterNotes`), a tested multilingual model, npm publishing.

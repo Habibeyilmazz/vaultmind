@@ -55,10 +55,10 @@ Claude Desktop (`claude_desktop_config.json`):
 
 | Tool | What it does |
 | --- | --- |
-| `search_notes` | Finds notes for words or a question and returns the best matching section of each, with path, heading and line. Paginated. |
+| `search_notes` | Finds notes for words or a question and returns the best matching section of each, with path, heading and line. Optional `tags` and `folder` narrow it. Paginated. |
 | `get_note` | Returns one note by path, file name, alias or title: body, tags, frontmatter, outgoing links, backlinks. Long notes come in pieces. |
 | `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
-| `recent_notes` | Lists the most recently modified notes. |
+| `recent_notes` | Lists the most recently modified notes, or with `tags` / `folder` every note that matches, newest first. |
 
 All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call). If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
 
@@ -69,6 +69,7 @@ The tools hand note text to the model as written. If your vault holds clipped we
 - **Hybrid search.** BM25 keyword ranking (SQLite FTS5) and vector similarity are fused with reciprocal rank fusion. Keyword search understands stemming (`fermenting` finds `ferment`) and ignores diacritics (`cafe` finds `café`).
 - **Embeddings on your machine.** `Xenova/all-MiniLM-L6-v2` through transformers.js on the CPU. Without it, search falls back to keywords on its own.
 - **Understands Obsidian notes.** YAML frontmatter (`title`, `tags`, `aliases`), inline `#tags` including `#nested/tags`, `[[wikilinks]]` with `|alias` and `#heading`, `![[embeds]]`, and relative Markdown links. Links resolve to the note next to the linking note first, then by path, file name and alias. Titles, aliases, headings and tags are all searchable.
+- **Filter by tag and folder.** Type `tag:garden` or `path:projects` in the search box or after `vaultmind search`, alone or with words (`tag:project path:work deadline`). A tag covers its nested tags (`tag:project` finds `#project/active`), several `tag:` must all match, a folder includes its subfolders, and a quoted value may hold spaces (`path:"daily notes"`). On its own, a filter lists every matching note, newest first. Clicking a tag on a note does the same. The MCP tools take `tags` and `folder` parameters, and an unknown tag gets a reply that lists the vault's tags.
 - **Heading-aware chunks.** Each section is indexed with its heading path (`Sourdough Starter > Feeding schedule`), so a hit points at the part of the note that matched.
 - **Incremental indexing.** Only new and changed files are read again. Deleted files leave the index.
 - **Web UI.** Search as you type, a reading view, related notes with reasons, the notes linked to the current one, and the link graph of the whole vault, which zooms and pans (buttons, wheel, drag, pinch) and never draws one note name over another. Light and dark, works on a phone, keyboard friendly (`/` focuses search, arrow keys move through results).
@@ -99,7 +100,7 @@ Measured on an Apple M3 Pro with a generated vault of 2,000 notes (12,000 sectio
 
 ```
 vaultmind index              Build or update the index
-vaultmind search <query>     Search from the terminal
+vaultmind search <query>     Search from the terminal (tag:<tag> and path:<folder> narrow it)
 vaultmind serve              Start the web UI on 127.0.0.1
 vaultmind mcp                Run the MCP server on stdio
 vaultmind ask <question>     Answer from your notes with citations (needs ANTHROPIC_API_KEY)
@@ -137,7 +138,6 @@ Two things use the network, both optional:
 
 ## Roadmap
 
-- Filter search by tag and folder
 - File watching instead of the 30-second rescan
 - Filtering in the link graph
 - A multilingual embedding model option that is actually tested
