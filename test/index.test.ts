@@ -416,3 +416,15 @@ test("a change in a watched vault makes the next query rescan, unless it is insi
     vault.close();
   }
 });
+
+test("Chinese and Japanese text written without spaces is searchable", async () => {
+  const dir = tempVault();
+  writeFileSync(join(dir, "日本語のノート.md"), "# 日本語のノート\n\n京都の庭で抹茶を飲む。\n");
+  const db = openDb(":memory:");
+  indexVault(db, dir);
+  const title = await search(db, "日本語", { mode: "keyword" });
+  assert.ok(title.hits.some((h) => h.path === "日本語のノート.md"));
+  const tea = (await search(db, "抹茶", { mode: "keyword" })).hits.find((h) => h.path === "日本語のノート.md");
+  assert.ok(tea);
+  assert.ok(!/ [抹茶] |[抹茶] [^\u0002]/.test(tea.snippet), tea.snippet);
+});

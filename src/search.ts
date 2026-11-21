@@ -104,12 +104,16 @@ const STOPWORDS = new Set(
   ),
 );
 
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu;
+/** Puts spaces around every Chinese or Japanese character so the FTS tokenizer indexes each one (it would keep a whole run as one word). */
+export const spaceCjk = (text: string): string => text.replace(CJK, " $&");
+
 /** Turns free text into an FTS5 query: quoted terms joined by OR, so input can never be read as FTS syntax. */
 export function ftsQuery(text: string, prefix = false): string {
   const words = text.match(/[\p{L}\p{N}_]+/gu) ?? [];
   const content = words.filter((word) => !STOPWORDS.has(word.toLowerCase()));
   const terms = content.length ? content : words;
-  return terms.map((term, i) => `"${term}"${prefix && i === terms.length - 1 ? "*" : ""}`).join(" OR ");
+  return terms.map((term, i) => `"${spaceCjk(term).trim()}"${prefix && i === terms.length - 1 ? "*" : ""}`).join(" OR ");
 }
 
 function keywordCandidates(db: Db, query: string, prefix: boolean, scope?: Set<number>): Candidate[] {
@@ -250,7 +254,7 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
 /** A short one-line excerpt: the FTS snippet when there is one, else the start of the section. */
 function excerpt(text: string, snippet?: string): string {
   // Wikilink brackets and table rules are noise in a short excerpt; list items run together without a bullet.
-  return (snippet ?? (text.length > 220 ? `${Array.from(text).slice(0, 220).join("")}…` : text))
+  return (snippet?.replace(/(\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}) (?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u0002])/gu, "$1") ?? (text.length > 220 ? `${Array.from(text).slice(0, 220).join("")}…` : text))
     .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "• ")
     .replace(/\[\[|\]\]/g, "")
     .replace(/\||-{3,}/g, " ")

@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Launch pass (2026-11-22)
+
+Checked README, CONTRIBUTING, issue templates, repo description and topics against the code: all present and accurate, so no change there. Only the open bug from last round was worth fixing.
+
+- Fixed: Chinese and Japanese text without spaces was not searchable (`日本語` did not find `日本語のノート`). Han, Hiragana and Katakana characters are now indexed one by one and a query term becomes a phrase of characters; excerpts are rejoined. Schema version 3, so existing indexes rebuild themselves once on the next `index`. Not word segmentation: `京` also matches inside `東京`. Hangul already worked (it uses spaces). Test; it fails without the fix.
+- Still not done: Windows by eye, Claude Desktop, `ask` against the live API.
+
 ### Reliability pass (2026-11-22)
 
 Tried to break the tool on a synthetic vault: empty note, broken frontmatter, BOM, CRLF, invalid UTF-8, a 3 MB note without spaces, nonsense dates and wikilinks, CJK names; then odd CLI flags, an unreachable model hub, a missing vault, 14 odd web API URLs (including a 200 KB query) and 24 odd MCP calls. Nothing crashed or returned a 5xx; two real bugs came out of it, plus the last round's Windows gap.

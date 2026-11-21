@@ -150,7 +150,7 @@ Two things use the network, both optional:
 ## Limitations
 
 - `ask` has never run against the live Anthropic API (no key was available while building). Tests cover it with a stubbed client and with the real SDK talking HTTP to a local stand-in server, so whether the live API accepts the request exactly as sent is still unconfirmed.
-- The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
+- The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; Chinese and Japanese text is indexed one character at a time, so a word is found as a phrase of characters (no word segmentation, so short words also match inside longer ones); `--model` accepts another model but none has been tried.
 - The link graph has zoom and pan but no filtering. Names that would collide stay hidden until you zoom in or hover; beyond a few hundred notes the unzoomed view is a dense cloud.
 - Symbolic links inside the vault are not followed, so a linked note or folder is not indexed.
 - Search returns one hit per note (its best section). Each ranking contributes its 100 best sections, at most three per note, so very broad queries are not exhaustive.

@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 export type Db = DatabaseSync;
 
 /** Bump when the schema changes. The index is a cache: a version mismatch drops and rebuilds it. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 /** Marks the file as a vaultmind index ("vmnd"). Indexes made before it existed are recognised by their chunks_fts table. */
 const APPLICATION_ID = 0x766d6e64;
 

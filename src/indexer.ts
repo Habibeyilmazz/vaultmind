@@ -1,3 +1,4 @@
+import { spaceCjk } from "./search.ts";
 import { createHash } from "node:crypto";
 import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, sep } from "node:path";
@@ -133,7 +134,7 @@ export function indexVault(db: Db, dir: string): IndexStats {
       for (const chunk of note.chunks) {
         const chunkId = insertChunk.run(noteId, chunk.heading, chunk.text, chunk.line).lastInsertRowid;
         // Aliases are other names for the title, so they are searched with the title's weight.
-        insertFts.run(chunkId, [note.title, ...note.aliases].join("\n"), chunk.heading, chunk.text, note.tags.join(" "));
+        insertFts.run(chunkId, spaceCjk([note.title, ...note.aliases].join("\n")), spaceCjk(chunk.heading), spaceCjk(chunk.text), note.tags.join(" "));
       }
       for (const tag of note.tags) insertTag.run(noteId, tag);
       for (const target of note.links) insertLink.run(noteId, target);
