@@ -224,13 +224,14 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
   );
   const match = ftsQuery(query, prefix);
   const snippetRow = match
-    ? db.prepare("SELECT snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS s FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid = ?")
+    ? db.prepare("SELECT snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS s FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid = CAST(? AS INTEGER)")
     : undefined;
   const hits: Hit[] = [];
   for (const entry of ranked.slice(offset, offset + limit)) {
     const row = chunkRow.get(entry.chunkId) as { noteId: number; heading: string; text: string; line: number; path: string; title: string } | undefined;
     if (!row) continue;
     // snippet() costs ~7 ms a row on a 50k-section vault, so it runs for the returned page only, never for every match.
+    // The CAST above matters: node:sqlite binds JS numbers as REAL, and FTS5 then drops the rowid filter and returns the first match.
     const snippet = used === "semantic" ? undefined : (snippetRow?.get(match, entry.chunkId) as { s: string } | undefined)?.s;
     hits.push({
       path: row.path,

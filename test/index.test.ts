@@ -86,6 +86,17 @@ test("keyword search ranks the right section first and highlights matches", asyn
   assert.equal(new Set(result.hits.map((h) => h.path)).size, result.hits.length, "one hit per note");
 });
 
+test("each hit's excerpt comes from its own section", async () => {
+  const { db } = indexed();
+  const { hits } = await search(db, "when should the garden be watered");
+  assert.ok(hits.length > 2);
+  const plain = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  for (const hit of hits) {
+    const words = plain(hit.snippet).split(" ").slice(0, 4).join(" ");
+    assert.ok(plain(hit.text).includes(words), `${hit.path}: "${hit.snippet}"`);
+  }
+});
+
 test("search excerpts keep list items apart with a bullet", async () => {
   const { db } = indexed();
   const hit = (await search(db, "anemometer")).hits[0];
