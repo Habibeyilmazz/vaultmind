@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Security pass (2026-11-22)
+
+Reviewed the whole repository by hand: the web server, MCP tools, Markdown rendering, SQL and FTS query building, file walking, `ask`, CI workflows, git history and dependencies. Probed a running `serve` on port 4101 with curl.
+
+- Fixed: `--db` pointed at a SQLite file that another program owns (any file whose schema version is not vaultmind's) dropped that file's `notes`, `links`, `tags` and `meta` tables while rebuilding the index. vaultmind now marks its index files (`PRAGMA application_id`) and refuses to rebuild a database that has tables but is neither marked nor an older vaultmind index. Older vaultmind indexes are still rebuilt as before. Test; it fails without the fix.
+- Checked, no change: requests with Host `evil.com`, `127.0.0.1.evil.com`, `localhost@evil.com` are refused (403/400); `/api/ask` refuses cross-site and `Origin: null` posts, non-JSON bodies, and bodies over 16 KB; `OPTIONS` gets 405 with no CORS headers; `../` in paths and `?path=` reach nothing outside the index; the CSP is sent. Every SQL statement is parameterised and FTS input is reduced to quoted words. Symlinks in the vault are not followed. Rendered notes escape raw HTML and allow only http(s), mailto and note links. MCP tools are read-only with strict zod schemas.
+- Checked, no change: `npm audit` reports 0 vulnerabilities; both workflows use `contents: read`, actions pinned to commit SHAs, `persist-credentials: false`. Git history has no secrets, `.env` or index files, and only the noreply identity.
+- The `/security-review` skill could not run here: it needs the session to start inside the git repository, and this session started in a different folder.
+- Still not done: `ask` against the live API; the web UI looked at by eye on Windows; the per-note graph measured on a 10,000-note vault.
+
 ### Design and UX pass (2026-11-22)
 
 Looked at the running web UI in Chromium at 1360, 900 and 390 px, light and dark: home graph, search, empty results, a note, a missing note, keyboard focus, touch target sizes. The layout, type, colours, focus rings and reduced-motion handling held up; nothing was restyled. What was wrong was state, plus two items from the last round's gaps.
