@@ -64,8 +64,9 @@ function renderList(title, hint, items) {
   );
 }
 
-async function showRecent() {
+async function showRecent(run = searchRun) {
   const { total, notes } = await api("/api/recent?limit=30");
+  if (run !== searchRun) return; // a search started meanwhile
   renderList(
     "Recent notes",
     total === 0 ? "This vault has no Markdown notes yet. Add a .md file and it shows up here." : "",
@@ -81,7 +82,7 @@ async function runSearch() {
   lastQuery = query;
   const run = ++searchRun;
   try {
-    if (!query) return await showRecent();
+    if (!query) return await showRecent(run);
     const result = await api(`/api/search?limit=30&q=${encodeURIComponent(query)}`);
     if (run !== searchRun) return; // a newer keystroke already answered
     renderList(
@@ -266,12 +267,18 @@ function drawGraph(graph, { width, height, focusId, label, colour }) {
   return svg;
 }
 
+// Bumped on every navigation, so a slow response for an older view is dropped instead of drawn over the newer one.
+let view = 0;
+
 async function showGraph() {
+  const mine = ++view;
+  const graph = await api("/api/graph");
+  if (mine !== view) return;
+  graphCache = graph;
   currentPath = null;
   markCurrent();
   side.hidden = true;
   document.title = "vaultmind";
-  const graph = (graphCache = await api("/api/graph"));
   if (graph.nodes.length === 0) {
     main.replaceChildren(h("p", { class: "problem" }, "This vault has no Markdown notes yet. Add a .md file, then reload."));
     return;
@@ -313,15 +320,19 @@ window.addEventListener("resize", () => {
 // ---------- note view ----------
 
 async function showNote(path) {
+  const mine = ++view;
   let note;
   let related;
   try {
-    [note, { related }, graphCache] = await Promise.all([
+    const loaded = await Promise.all([
       api(`/api/note?path=${encodeURIComponent(path)}`),
       api(`/api/related?path=${encodeURIComponent(path)}`),
       api("/api/graph"),
     ]);
+    if (mine !== view) return;
+    [note, { related }, graphCache] = loaded;
   } catch (error) {
+    if (mine !== view) return;
     currentPath = null;
     side.hidden = true;
     main.replaceChildren(h("p", { class: "problem" }, error.message, " ", h("a", { href: "#/" }, "Back to the link graph")));
@@ -384,6 +395,7 @@ async function showNote(path) {
 // ---------- ask ----------
 
 async function showAnswer(question) {
+  const mine = ++view;
   currentPath = null;
   markCurrent();
   side.hidden = true;
@@ -391,6 +403,7 @@ async function showAnswer(question) {
   main.replaceChildren(h("article", { class: "answer" }, h("h1", {}, question), body));
   try {
     const result = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+    if (mine !== view) return;
     const byNumber = new Map(result.sources.map((source) => [String(source.n), source]));
     const paragraphs = result.answer.split(/\n{2,}/).map((paragraph) =>
       h(
@@ -427,7 +440,7 @@ async function showAnswer(question) {
       h("p", { class: "model" }, `Answered by ${result.model} from the note sections above.`),
     );
   } catch (error) {
-    body.replaceChildren(h("p", {}, error.message));
+    if (mine === view) body.replaceChildren(h("p", {}, error.message));
   }
 }
 

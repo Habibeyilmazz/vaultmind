@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, posix, relative, sep } from "node:path";
 import type { Db } from "./db.ts";
 import { transaction } from "./db.ts";
 import type { Embedder } from "./embed.ts";
@@ -41,8 +41,9 @@ export function listNotes(dir: string): string[] {
 /**
  * Maps a link target or a user-supplied name to a note id, the way Obsidian does:
  * exact path first, then file name, then alias, then title (all case-insensitive).
+ * Given the linking note's path, a target relative to that note's folder wins over everything else.
  */
-export function buildResolver(db: Db): (name: string) => number | undefined {
+export function buildResolver(db: Db): (name: string, from?: string) => number | undefined {
   const byPath = new Map<string, number>();
   const byName = new Map<string, number>();
   const byAlias = new Map<string, number>();
@@ -62,9 +63,10 @@ export function buildResolver(db: Db): (name: string) => number | undefined {
     for (const alias of JSON.parse(row.aliases) as string[]) put(byAlias, alias.toLowerCase(), row.id);
   }
   for (const row of rows) put(byAlias, row.title.toLowerCase(), row.id);
-  return (name) => {
+  return (name, from) => {
     const key = name.trim().replace(/\.md$/i, "").replace(/^\.?\//, "").toLowerCase();
-    return byPath.get(key) ?? byName.get(key.split("/").pop()!) ?? byAlias.get(key);
+    const sibling = from === undefined ? undefined : byPath.get(posix.join(posix.dirname(from.toLowerCase()), key));
+    return sibling ?? byPath.get(key) ?? byName.get(key.split("/").pop()!) ?? byAlias.get(key);
   };
 }
 
@@ -76,19 +78,21 @@ function deleteNote(db: Db, id: number): void {
 /** Brings the keyword index in line with the files on disk. Only new or changed files are re-read. */
 export function indexVault(db: Db, dir: string): IndexStats {
   const stats: IndexStats = { scanned: 0, added: 0, updated: 0, removed: 0, skipped: 0 };
-  const known = new Map(
-    (db.prepare("SELECT id, path, mtime, size, hash FROM notes").all() as { id: number; path: string; mtime: number; size: number; hash: string }[]).map(
-      (row) => [row.path, row],
-    ),
-  );
   const insertNote = db.prepare("INSERT INTO notes(path, title, mtime, size, hash, aliases, frontmatter, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   const insertChunk = db.prepare("INSERT INTO chunks(note_id, heading, text, line) VALUES (?, ?, ?, ?)");
   const insertFts = db.prepare("INSERT INTO chunks_fts(rowid, title, heading, text, tags) VALUES (?, ?, ?, ?, ?)");
   const insertTag = db.prepare("INSERT INTO tags(note_id, tag) VALUES (?, ?)");
   const insertLink = db.prepare("INSERT OR IGNORE INTO links(src, target) VALUES (?, ?)");
 
+  const files = listNotes(dir);
   transaction(db, () => {
-    for (const path of listNotes(dir)) {
+    // Read the current state inside the write transaction: another process may have indexed in the meantime.
+    const known = new Map(
+      (db.prepare("SELECT id, path, mtime, size, hash FROM notes").all() as { id: number; path: string; mtime: number; size: number; hash: string }[]).map(
+        (row) => [row.path, row],
+      ),
+    );
+    for (const path of files) {
       stats.scanned++;
       const full = join(dir, path);
       const old = known.get(path);
@@ -133,9 +137,8 @@ export function indexVault(db: Db, dir: string): IndexStats {
       // A new note can satisfy an old dangling link, so resolve everything again. Cheap at vault scale.
       const resolve = buildResolver(db);
       const setDst = db.prepare("UPDATE links SET dst = ? WHERE src = ? AND target = ?");
-      for (const link of db.prepare("SELECT src, target FROM links").all() as { src: number; target: string }[]) {
-        setDst.run(resolve(link.target) ?? null, link.src, link.target);
-      }
+      const links = db.prepare("SELECT l.src, l.target, n.path FROM links l JOIN notes n ON n.id = l.src").all() as { src: number; target: string; path: string }[];
+      for (const link of links) setDst.run(resolve(link.target, link.path) ?? null, link.src, link.target);
     }
   });
   return stats;
@@ -152,13 +155,22 @@ export async function embedPending(db: Db, embedder: Embedder, onProgress?: (don
     .prepare("SELECT c.id, n.title, c.heading, c.text FROM chunks c JOIN notes n ON n.id = c.note_id WHERE c.embedding IS NULL")
     .all() as { id: number; title: string; heading: string; text: string }[];
   const update = db.prepare("UPDATE chunks SET embedding = ? WHERE id = ?");
+  const model = db.prepare("SELECT value FROM meta WHERE key = 'embed_model'");
   const BATCH = 16;
+  let done = 0;
   for (let i = 0; i < pending.length; i += BATCH) {
     const batch = pending.slice(i, i + BATCH);
     // Title and heading give short chunks the context they need to embed well.
     const vectors = await embedder.embed(batch.map((c) => `${c.title}\n${c.heading}\n${c.text}`));
-    transaction(db, () => batch.forEach((c, j) => update.run(toBlob(vectors[j]), c.id)));
-    onProgress?.(Math.min(i + BATCH, pending.length), pending.length);
+    const written = transaction(db, () => {
+      // Another process switched the index to a different model while we were computing: do not mix vectors.
+      if ((model.get() as { value: string } | undefined)?.value !== embedder.id) return false;
+      batch.forEach((c, j) => update.run(toBlob(vectors[j]), c.id)); // a chunk deleted meanwhile is simply not updated
+      return true;
+    });
+    if (!written) break;
+    done += batch.length;
+    onProgress?.(done, pending.length);
   }
-  return pending.length;
+  return done;
 }

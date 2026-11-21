@@ -79,7 +79,7 @@ notes/*.md ──parse──▶ sections, tags, links ──▶ SQLite (.vaultmi
                                                   └─ chunk vectors (384 floats each)
 
 query ─┬─ FTS5 MATCH, bm25() ───────┐
-       └─ embed, cosine over chunks ─┴─▶ reciprocal rank fusion ─▶ best section per note
+       └─ embed, cosine over chunks ─┴─▶ reciprocal rank fusion over sections ─▶ best section per note
 ```
 
 - `src/parse.ts` turns a file into title, tags, links and heading-scoped chunks (split at paragraph breaks above 1,000 characters).
@@ -126,7 +126,7 @@ Two things use the network, both optional:
 - `ask` is tested against a stubbed Anthropic client only. It has not been run against the live API in this release.
 - The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
 - The link graph has no zoom or pan. It reads well up to a few hundred notes and turns into a dense cloud beyond that.
-- Search returns one hit per note (its best section) chosen from the 100 best-ranked sections of each ranking.
+- Search returns one hit per note (its best section). Each ranking contributes its 100 best sections, at most three per note, so very broad queries are not exhaustive.
 - Developed on macOS and tested on Linux in CI. Windows is untested.
 - Not published to npm; install from this repository.
 

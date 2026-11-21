@@ -93,7 +93,7 @@ export async function handle(vault: Vault, request: Request): Promise<Response> 
     case "/api/note": {
       const note = getNote(db, param("path"));
       if (!note) return fail(404, "No such note. It may have been renamed or deleted.");
-      return json({ ...note, html: renderNote(note.body, (target) => getNote(db, target)?.path) });
+      return json({ ...note, html: renderNote(note.body, (target) => getNote(db, target, note.path)?.path) });
     }
     case "/api/related": {
       const related = await relatedNotes(db, param("path"), 8);

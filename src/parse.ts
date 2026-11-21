@@ -70,6 +70,7 @@ export function parseNote(path: string, raw: string): ParsedNote {
   const chunks: Chunk[] = [];
   const headingPath: string[] = [];
   let firstH1 = "";
+  const headings: string[] = [];
   let inFence = false;
   let section: string[] = [];
   let sectionLine = offset + 1;
@@ -99,6 +100,7 @@ export function parseNote(path: string, raw: string): ParsedNote {
       const level = heading[1].length;
       headingPath.length = level - 1;
       headingPath[level - 1] = heading[2];
+      headings.push(heading[2]);
       if (level === 1 && !firstH1) firstH1 = heading[2];
       sectionLine = offset + index + 1;
       return;
@@ -117,6 +119,8 @@ export function parseNote(path: string, raw: string): ParsedNote {
     }
   });
   flush();
+  // A stub or outline with no body text still gets one chunk, so its title and headings are searchable.
+  if (chunks.length === 0) chunks.push({ heading: "", text: headings.join("\n"), line: offset + 1 });
 
   for (const tag of [...stringList(frontmatter.tags), ...stringList(frontmatter.tag)]) {
     const clean = tag.trim().replace(/^#/, "").toLowerCase();

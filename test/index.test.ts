@@ -147,6 +147,60 @@ test("related notes combine links, shared tags and content", async () => {
   assert.equal(await relatedNotes(db, "No Such Note"), undefined);
 });
 
+test("one long note cannot crowd other notes out of the results", async () => {
+  const { dir, db } = indexed();
+  const sections = Array.from({ length: 150 }, (_, i) => `## Day ${i}\n\nzanzibar zanzibar zanzibar`).join("\n\n");
+  writeFileSync(join(dir, "Journal.md"), `# Journal\n\n${sections}`);
+  writeFileSync(join(dir, "Postcard.md"), "# Postcard\n\nA long card that mentions zanzibar only once, among many other words about the trip.");
+  indexVault(db, dir);
+  const keyword = await search(db, "zanzibar");
+  assert.deepEqual(keyword.hits.map((h) => h.title), ["Journal", "Postcard"]);
+  assert.equal(keyword.total, 2);
+
+  await embedPending(db, fakeEmbedder);
+  const hybrid = await search(db, "zanzibar", { embedder: fakeEmbedder });
+  assert.deepEqual(hybrid.hits.map((h) => h.title).sort(), ["Journal", "Postcard"]);
+});
+
+test("a note with headings but no body text is still found by its title and headings", async () => {
+  const { dir, db } = indexed();
+  writeFileSync(join(dir, "Stub.md"), "# Quokka\n\n## Wombat\n");
+  indexVault(db, dir);
+  assert.equal((await search(db, "quokka")).hits[0]?.path, "Stub.md");
+  assert.equal((await search(db, "wombat")).hits[0]?.path, "Stub.md");
+});
+
+test("a link prefers the note next to it over a same-named note elsewhere", () => {
+  const { dir, db } = indexed();
+  mkdirSync(join(dir, "b"));
+  writeFileSync(join(dir, "Target.md"), "# Root target");
+  writeFileSync(join(dir, "b/Target.md"), "# Nested target");
+  writeFileSync(join(dir, "b/Source.md"), "[local](Target.md) and [[Target]] and [up](../Home.md)");
+  writeFileSync(join(dir, "Other.md"), "[[Target]]");
+  indexVault(db, dir);
+  assert.deepEqual(getNote(db, "b/Source.md")!.links.map((n) => n.path), ["Home.md", "b/Target.md"]);
+  assert.deepEqual(getNote(db, "Other.md")!.links.map((n) => n.path), ["Target.md"]);
+  assert.equal(getNote(db, "Target", "b/Source.md")!.title, "Nested target");
+});
+
+test("an embedding that finishes after its note changed is not written to the new text", async () => {
+  const { dir, db } = indexed();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const slow = { id: fakeEmbedder.id, embed: async (texts: string[]) => (await gate, fakeEmbedder.embed(texts)) };
+  db.exec("DELETE FROM chunks_fts; DELETE FROM notes");
+  writeFileSync(join(dir, "Only.md"), "# Only\n\nold text");
+  for (const file of listNotes(dir)) if (file !== "Only.md") rmSync(join(dir, file));
+  indexVault(db, dir);
+  const pending = embedPending(db, slow);
+  writeFileSync(join(dir, "Only.md"), "# Only\n\nnew and different text");
+  indexVault(db, dir); // replaces the chunk while its old text is still being embedded
+  release();
+  await pending;
+  assert.equal(stats(db).embedded, 0, "the stale vector was dropped, the new chunk still waits for its own");
+  assert.equal(await embedPending(db, fakeEmbedder), 1);
+});
+
 test("recent notes and link graph", () => {
   const { dir, db } = indexed();
   writeFileSync(join(dir, "Newest.md"), "# Newest\n[[Home]]");

@@ -32,9 +32,13 @@ export const HL_END = "\u0002";
 /** Semantic candidates below this cosine similarity are noise for small sentence-embedding models. */
 const MIN_SIMILARITY = 0.25;
 const CANDIDATES = 100;
+/** Sections one note may contribute to a ranking, so a long journal cannot push every other note out. */
+const PER_NOTE = 3;
 const RRF_K = 60;
 
+/** One section in one ranking. */
 interface Candidate {
+  noteId: number;
   chunkId: number;
   snippet?: string;
 }
@@ -58,13 +62,17 @@ function keywordCandidates(db: Db, query: string, prefix: boolean): Candidate[] 
   const match = ftsQuery(query, prefix);
   if (!match) return [];
   // bm25 weights: title, heading, text, tags.
-  const rows = db
+  return db
     .prepare(
-      `SELECT rowid AS chunkId, snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS snippet
-       FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts, 4.0, 2.0, 1.0, 2.0) LIMIT ?`,
+      `WITH hits AS MATERIALIZED (
+         SELECT chunks_fts.rowid AS chunkId, c.note_id AS noteId,
+                snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS snippet,
+                bm25(chunks_fts, 4.0, 2.0, 1.0, 2.0) AS score
+         FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?),
+       ranked AS (SELECT *, row_number() OVER (PARTITION BY noteId ORDER BY score) AS nth FROM hits)
+       SELECT chunkId, noteId, snippet FROM ranked WHERE nth <= ? ORDER BY score LIMIT ?`,
     )
-    .all(match, CANDIDATES) as { chunkId: number; snippet: string }[];
-  return rows;
+    .all(match, PER_NOTE, CANDIDATES) as unknown as Candidate[];
 }
 
 // shortcut: brute-force scan over every stored vector per query; fine up to roughly 50k chunks, then add a vector index.
@@ -79,12 +87,20 @@ function allVectors(db: Db): { chunkId: number; noteId: number; vector: Float32A
 
 async function semanticCandidates(db: Db, query: string, embedder: Embedder): Promise<Candidate[]> {
   const [queryVector] = await embedder.embed([query]);
-  return allVectors(db)
+  const scored = allVectors(db)
     .filter((row) => row.vector.length === queryVector.length)
-    .map((row) => ({ chunkId: row.chunkId, score: dot(queryVector, row.vector) }))
+    .map((row) => ({ noteId: row.noteId, chunkId: row.chunkId, score: dot(queryVector, row.vector) }))
     .filter((row) => row.score >= MIN_SIMILARITY)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, CANDIDATES);
+    .sort((a, b) => b.score - a.score);
+  const perNote = new Map<number, number>();
+  const out: Candidate[] = [];
+  for (const { noteId, chunkId } of scored) {
+    const seen = perNote.get(noteId) ?? 0;
+    if (seen >= PER_NOTE) continue;
+    perNote.set(noteId, seen + 1);
+    if (out.push({ noteId, chunkId }) === CANDIDATES) break;
+  }
+  return out;
 }
 
 export function hasEmbeddings(db: Db): boolean {
@@ -123,26 +139,27 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
   if (used !== "keyword") lists.push(await semanticCandidates(db, query, embedder!));
   if (used !== "semantic") lists.push(keywordCandidates(db, query, prefix));
 
-  const fused = new Map<number, { score: number; snippet?: string }>();
+  // Reciprocal rank fusion over sections: a section both rankings like beats one that only one of them likes.
+  const fused = new Map<number, Candidate & { score: number }>();
   for (const list of lists) {
     list.forEach((candidate, rank) => {
-      const entry = fused.get(candidate.chunkId) ?? { score: 0 };
+      const entry = fused.get(candidate.chunkId) ?? { ...candidate, score: 0 };
       entry.score += 1 / (RRF_K + rank + 1);
       entry.snippet ??= candidate.snippet;
       fused.set(candidate.chunkId, entry);
     });
   }
-  const ranked = [...fused.entries()].sort((a, b) => b[1].score - a[1].score);
+  // Then one hit per note: its best section.
+  const seen = new Set<number>();
+  const ranked = [...fused.values()].sort((a, b) => b.score - a.score).filter((entry) => !seen.has(entry.noteId) && seen.add(entry.noteId));
 
   const chunkRow = db.prepare(
     "SELECT c.note_id AS noteId, c.heading, c.text, c.line, n.path, n.title FROM chunks c JOIN notes n ON n.id = c.note_id WHERE c.id = ?",
   );
-  const seen = new Set<number>();
   const hits: Hit[] = [];
-  for (const [chunkId, entry] of ranked) {
-    const row = chunkRow.get(chunkId) as { noteId: number; heading: string; text: string; line: number; path: string; title: string } | undefined;
-    if (!row || seen.has(row.noteId)) continue;
-    seen.add(row.noteId);
+  for (const entry of ranked.slice(offset, offset + limit)) {
+    const row = chunkRow.get(entry.chunkId) as { noteId: number; heading: string; text: string; line: number; path: string; title: string } | undefined;
+    if (!row) continue;
     hits.push({
       path: row.path,
       title: row.title,
@@ -159,7 +176,7 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
       score: entry.score,
     });
   }
-  return { mode: used, total: hits.length, hits: hits.slice(offset, offset + limit) };
+  return { mode: used, total: ranked.length, hits };
 }
 
 export interface NoteRef {
@@ -188,17 +205,20 @@ interface NoteRow {
   body: string;
 }
 
-function noteRow(db: Db, name: string): NoteRow | undefined {
+function noteRow(db: Db, name: string, from?: string): NoteRow | undefined {
   const byPath = db.prepare("SELECT id, path, title, mtime, frontmatter, body FROM notes WHERE path = ?");
-  const exact = byPath.get(name) as NoteRow | undefined;
+  const exact = from === undefined ? (byPath.get(name) as NoteRow | undefined) : undefined;
   if (exact) return exact;
-  const id = buildResolver(db)(name);
+  const id = buildResolver(db)(name, from);
   return id === undefined ? undefined : (db.prepare("SELECT id, path, title, mtime, frontmatter, body FROM notes WHERE id = ?").get(id) as unknown as NoteRow);
 }
 
-/** Looks a note up by vault-relative path, file name, alias or title. Reads only from the index, never from disk. */
-export function getNote(db: Db, name: string): Note | undefined {
-  const row = noteRow(db, name);
+/**
+ * Looks a note up by vault-relative path, file name, alias or title. Reads only from the index, never from disk.
+ * Pass `from` (the path of the note containing the link) to resolve a link target the way the indexer does.
+ */
+export function getNote(db: Db, name: string, from?: string): Note | undefined {
+  const row = noteRow(db, name, from);
   if (!row) return undefined;
   const out = db
     .prepare("SELECT l.target, n.path, n.title FROM links l LEFT JOIN notes n ON n.id = l.dst WHERE l.src = ? ORDER BY l.target")

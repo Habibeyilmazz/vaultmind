@@ -60,3 +60,8 @@ test("long sections are split at paragraph breaks", () => {
     assert.equal(chunk.heading, "Long");
   }
 });
+
+test("a note with no body text gets one chunk made of its headings", () => {
+  assert.deepEqual(parseNote("n.md", "---\ntitle: T\n---\n# One\n\n## Two\n").chunks, [{ heading: "", text: "One\nTwo", line: 4 }]);
+  assert.deepEqual(parseNote("n.md", "").chunks, [{ heading: "", text: "", line: 1 }]);
+});
