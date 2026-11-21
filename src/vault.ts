@@ -101,19 +101,22 @@ export class Vault {
    */
   watch(delayMs = 300): boolean {
     if (this.#watcher) return true;
+    const rescanIn = (ms: number) => {
+      this.#lastSync = 0; // a query arriving before the timer fires re-indexes too
+      clearTimeout(this.#debounce);
+      this.#debounce = setTimeout(() => {
+        try {
+          this.keepFresh();
+        } catch (error) {
+          this.#log(`Re-indexing failed: ${error instanceof Error ? error.message : error}`);
+        }
+      }, ms).unref();
+    };
     try {
       this.#watcher = watch(this.dir, { recursive: true }, (_event, filename) => {
         // Our own index lives in .vaultmind; dot-folders and node_modules are never indexed either.
         if (filename && String(filename).split(/[\\/]/).some((part) => part.startsWith(".") || part === "node_modules")) return;
-        this.#lastSync = 0; // a query arriving before the timer fires re-indexes too
-        clearTimeout(this.#debounce);
-        this.#debounce = setTimeout(() => {
-          try {
-            this.keepFresh();
-          } catch (error) {
-            this.#log(`Re-indexing failed: ${error instanceof Error ? error.message : error}`);
-          }
-        }, delayMs).unref();
+        rescanIn(delayMs);
       });
     } catch (error) {
       this.#log(`Not watching the vault for changes (${error instanceof Error ? error.message : error}); rescanning at most every 30 s instead.`);
@@ -125,6 +128,9 @@ export class Vault {
       this.#watcher = undefined;
     });
     this.#watcher.unref();
+    // macOS starts reporting events a moment after watch() returns, longer on a busy machine: one rescan
+    // shortly after start picks up a note written in that gap instead of leaving it for the 30-second rescan.
+    rescanIn(Math.max(delayMs, 1000));
     return true;
   }
 
