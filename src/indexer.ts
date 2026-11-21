@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, sep } from "node:path";
 import type { Db } from "./db.ts";
 import { transaction } from "./db.ts";
@@ -24,7 +24,15 @@ const MAX_NOTE_BYTES = 5 * 1024 * 1024;
 export function listNotes(dir: string): string[] {
   const out: string[] = [];
   const walk = (current: string) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch (error) {
+      // A subfolder we may not read (permissions, a sync client) must not take the whole vault down. The root failing still throws.
+      if (current === dir) throw error;
+      return;
+    }
+    for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const full = join(current, entry.name);
       if (entry.isDirectory()) {

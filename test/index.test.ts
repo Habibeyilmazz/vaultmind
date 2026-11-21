@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { openDb } from "../src/db.ts";
@@ -272,4 +272,17 @@ test("recent notes and link graph", () => {
   const ids = new Set(graph.nodes.map((n) => n.id));
   assert.ok(graph.edges.length >= 20);
   assert.ok(graph.edges.every((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target));
+});
+
+test("a folder the user cannot read is skipped instead of stopping the whole index", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+  const dir = tempVault();
+  mkdirSync(join(dir, "locked"));
+  writeFileSync(join(dir, "locked", "secret.md"), "hidden");
+  chmodSync(join(dir, "locked"), 0);
+  try {
+    const notes = listNotes(dir);
+    assert.ok(notes.length > 5 && !notes.includes("locked/secret.md"));
+  } finally {
+    chmodSync(join(dir, "locked"), 0o755);
+  }
 });
