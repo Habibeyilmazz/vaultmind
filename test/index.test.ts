@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { openDb } from "../src/db.ts";
 import { embedPending, indexVault, listNotes } from "../src/indexer.ts";
-import { ftsQuery, getNote, HL_START, linkGraph, recentNotes, relatedNotes, search, stats } from "../src/search.ts";
+import { allTags, filterNotes, ftsQuery, getNote, HL_START, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "../src/search.ts";
 import { fakeEmbedder, tempVault } from "./helpers.ts";
 
 function indexed() {
@@ -102,6 +102,54 @@ test("keyword search: stemming, diacritics, tags, prefix, paging", async () => {
   const page = await search(db, "coffee", { limit: 1, offset: 1 });
   assert.equal(page.total, all.total);
   assert.deepEqual(page.hits[0].path, all.hits[1].path);
+});
+
+test("parseQuery splits tag: and path: operators off the words", () => {
+  assert.deepEqual(parseQuery("tag:garden  water PATH:projects"), { text: "water", filter: { tags: ["garden"], folder: "projects" } });
+  assert.deepEqual(parseQuery('tag:#book tag:health path:"my notes/2024" sleep'), { text: "sleep", filter: { tags: ["#book", "health"], folder: "my notes/2024" } });
+  assert.deepEqual(parseQuery("mytag:x tag: how"), { text: "mytag:x tag: how", filter: { tags: [], folder: undefined } }, "only whole operators with a value");
+});
+
+test("filters: tags (nested count, all must match), folder prefix, case-insensitive", async () => {
+  const { db } = indexed();
+  const paths = (filter: Parameters<typeof filterNotes>[1]) => {
+    const ids = filterNotes(db, filter);
+    return ids && [...ids].map((id) => (db.prepare("SELECT title FROM notes WHERE id = ?").get(id) as { title: string }).title).sort();
+  };
+  assert.equal(paths({}), undefined, "an empty filter is no filter");
+  assert.equal(paths({ tags: [" "], folder: "./" }), undefined);
+  assert.deepEqual(paths({ tags: ["project"] }), ["Garden Irrigation", "Weather Station"], "#project also covers #project/active");
+  assert.deepEqual(paths({ tags: ["#Project/Active"] }), ["Weather Station"]);
+  assert.deepEqual(paths({ tags: ["proj"] }), [], "a tag is not a prefix of another tag");
+  assert.deepEqual(paths({ tags: ["book", "health"] }), ["Why We Sleep"]);
+  assert.deepEqual(paths({ folder: "Kitchen/" }), ["Espresso Dialing In", "Sourdough Starter", "Weekend Loaf"]);
+  assert.deepEqual(paths({ folder: "kitch" }), [], "a folder is matched whole");
+  assert.deepEqual(paths({ folder: "health", tags: ["running"] }), ["Running Log"]);
+  assert.deepEqual({ ...allTags(db)[0] }, { tag: "health", notes: 3 });
+});
+
+test("search and recent notes keep to the filter", async () => {
+  const { db } = indexed();
+  await embedPending(db, fakeEmbedder);
+  for (const mode of ["keyword", "semantic", "auto"] as const) {
+    const result = await search(db, "sleep", { mode, embedder: fakeEmbedder, filter: { folder: "reading" } });
+    assert.ok(result.hits.length > 0, mode);
+    assert.ok(result.hits.every((hit) => hit.path.startsWith("reading/")), mode);
+    assert.equal(result.inScope, 3);
+  }
+  assert.equal((await search(db, "sleep")).inScope, undefined);
+  assert.deepEqual(await search(db, "sleep", { filter: { tags: ["nope"] } }), { mode: "keyword", total: 0, hits: [], inScope: 0 });
+
+  // No words, only a filter: the notes that pass it, newest first.
+  const listed = await search(db, " ", { filter: { tags: ["baking"] } });
+  assert.deepEqual(listed.hits.map((hit) => hit.title).sort(), ["Sourdough Starter", "Weekend Loaf"]);
+  assert.equal(listed.total, 2);
+  assert.ok(listed.hits.every((hit) => hit.snippet && hit.line >= 1));
+
+  const recent = recentNotes(db, 1, 0, { tags: ["health"] });
+  assert.equal(recent.total, 3);
+  assert.equal(recent.notes.length, 1);
+  assert.ok(recent.notes[0].tags.includes("health"));
 });
 
 test("user input is never interpreted as FTS5 syntax", async () => {

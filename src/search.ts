@@ -24,6 +24,61 @@ export interface SearchResult {
   mode: "hybrid" | "keyword" | "semantic";
   total: number;
   hits: Hit[];
+  /** With a filter: how many notes pass it, whatever the query. */
+  inScope?: number;
+}
+
+/** Limits a search or listing to notes with every one of these tags (nested tags count) inside this folder. */
+export interface NoteFilter {
+  tags?: string[];
+  folder?: string;
+}
+
+const cleanTag = (tag: string) => tag.trim().replace(/^#/, "").toLowerCase();
+const cleanFolder = (folder: string) =>
+  folder
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^(\.?\/)+|\/+$/g, "")
+    .toLowerCase();
+
+/**
+ * Splits Obsidian-style operators off a typed query: "tag:garden path:projects water" becomes
+ * text "water", tags ["garden"], folder "projects". A quoted value may hold spaces: path:"my notes".
+ */
+export function parseQuery(query: string): { text: string; filter: NoteFilter } {
+  const tags: string[] = [];
+  let folder: string | undefined;
+  const text = query.replace(/(?<=^|\s)(tag|path):(?:"([^"]*)"|(\S+))/gi, (_, key: string, quoted?: string, bare?: string) => {
+    const value = quoted ?? bare ?? "";
+    if (key.toLowerCase() === "tag") tags.push(value);
+    else folder = value;
+    return " ";
+  });
+  return { text: text.replace(/\s+/g, " ").trim(), filter: { tags, folder } };
+}
+
+/** Ids of the notes that pass the filter, or undefined when the filter is empty (every note passes). */
+export function filterNotes(db: Db, filter: NoteFilter = {}): Set<number> | undefined {
+  const tags = (filter.tags ?? []).map(cleanTag).filter(Boolean);
+  const folder = cleanFolder(filter.folder ?? "");
+  if (!tags.length && !folder) return undefined;
+  // shortcut: filters in JS over every note (Unicode-aware lowercasing); fine for tens of thousands of notes.
+  const rows = db
+    .prepare("SELECT n.id, n.path, group_concat(t.tag, char(10)) AS tags FROM notes n LEFT JOIN tags t ON t.note_id = n.id GROUP BY n.id")
+    .all() as { id: number; path: string; tags: string | null }[];
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (folder && !row.path.toLowerCase().startsWith(`${folder}/`)) continue;
+    const own = row.tags?.split("\n") ?? [];
+    if (tags.every((tag) => own.some((mine) => mine === tag || mine.startsWith(`${tag}/`)))) ids.add(row.id);
+  }
+  return ids;
+}
+
+/** Every tag in the vault with its number of notes, most used first. */
+export function allTags(db: Db): { tag: string; notes: number }[] {
+  return db.prepare("SELECT tag, count(*) AS notes FROM tags GROUP BY tag ORDER BY notes DESC, tag").all() as { tag: string; notes: number }[];
 }
 
 export const HL_START = "\u0001";
@@ -58,7 +113,7 @@ export function ftsQuery(text: string, prefix = false): string {
   return terms.map((term, i) => `"${term}"${prefix && i === terms.length - 1 ? "*" : ""}`).join(" OR ");
 }
 
-function keywordCandidates(db: Db, query: string, prefix: boolean): Candidate[] {
+function keywordCandidates(db: Db, query: string, prefix: boolean, scope?: Set<number>): Candidate[] {
   const match = ftsQuery(query, prefix);
   if (!match) return [];
   // bm25 weights: title, heading, text, tags.
@@ -68,11 +123,12 @@ function keywordCandidates(db: Db, query: string, prefix: boolean): Candidate[] 
          SELECT chunks_fts.rowid AS chunkId, c.note_id AS noteId,
                 snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS snippet,
                 bm25(chunks_fts, 4.0, 2.0, 1.0, 2.0) AS score
-         FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?),
+         FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
+         WHERE chunks_fts MATCH ? AND (? IS NULL OR c.note_id IN (SELECT value FROM json_each(?)))),
        ranked AS (SELECT *, row_number() OVER (PARTITION BY noteId ORDER BY score) AS nth FROM hits)
        SELECT chunkId, noteId, snippet FROM ranked WHERE nth <= ? ORDER BY score LIMIT ?`,
     )
-    .all(match, PER_NOTE, CANDIDATES) as unknown as Candidate[];
+    .all(match, scope ? 1 : null, JSON.stringify(scope ? [...scope] : []), PER_NOTE, CANDIDATES) as unknown as Candidate[];
 }
 
 // shortcut: brute-force scan over every stored vector per query; fine up to roughly 50k chunks, then add a vector index.
@@ -85,10 +141,10 @@ function allVectors(db: Db): { chunkId: number; noteId: number; vector: Float32A
   return rows.map((row) => ({ chunkId: row.id, noteId: row.note_id, vector: fromBlob(row.embedding) }));
 }
 
-async function semanticCandidates(db: Db, query: string, embedder: Embedder): Promise<Candidate[]> {
+async function semanticCandidates(db: Db, query: string, embedder: Embedder, scope?: Set<number>): Promise<Candidate[]> {
   const [queryVector] = await embedder.embed([query]);
   const scored = allVectors(db)
-    .filter((row) => row.vector.length === queryVector.length)
+    .filter((row) => row.vector.length === queryVector.length && (!scope || scope.has(row.noteId)))
     .map((row) => ({ noteId: row.noteId, chunkId: row.chunkId, score: dot(queryVector, row.vector) }))
     .filter((row) => row.score >= MIN_SIMILARITY)
     .sort((a, b) => b.score - a.score);
@@ -118,14 +174,27 @@ export interface SearchOptions {
   /** Treat the last word as a prefix (search-as-you-type). */
   prefix?: boolean;
   embedder?: Embedder | null;
+  filter?: NoteFilter;
 }
 
 /**
  * Ranks sections, then returns the best section per note.
  * "auto" fuses BM25 and vector rankings with reciprocal rank fusion when embeddings exist, and is plain BM25 otherwise.
+ * With a filter and no query words, lists the notes that pass the filter, newest first.
  */
 export async function search(db: Db, query: string, options: SearchOptions = {}): Promise<SearchResult> {
   const { mode = "auto", limit = 10, offset = 0, prefix = false, embedder } = options;
+  const scope = filterNotes(db, options.filter);
+  const inScope = scope ? { inScope: scope.size } : {};
+  if (scope && !/[\p{L}\p{N}]/u.test(query)) {
+    const { total, notes } = recentNotes(db, limit, offset, options.filter);
+    const firstChunk = db.prepare("SELECT c.heading, c.text, c.line FROM chunks c JOIN notes n ON n.id = c.note_id WHERE n.path = ? ORDER BY c.line, c.id LIMIT 1");
+    const hits = notes.map((note) => {
+      const chunk = (firstChunk.get(note.path) ?? { heading: "", text: "", line: 1 }) as { heading: string; text: string; line: number };
+      return { path: note.path, title: note.title, ...chunk, snippet: excerpt(chunk.text), tags: note.tags, score: 0 };
+    });
+    return { mode: "keyword", total, hits, ...inScope };
+  }
   const semanticReady = Boolean(embedder) && hasEmbeddings(db);
   if (mode === "semantic" && !semanticReady) {
     throw new Error(
@@ -136,8 +205,8 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
   const used: SearchResult["mode"] = mode === "semantic" ? "semantic" : mode === "auto" && semanticReady ? "hybrid" : "keyword";
   // Semantic first: when two sections tie after fusion, the one closer in meaning wins.
   const lists: Candidate[][] = [];
-  if (used !== "keyword") lists.push(await semanticCandidates(db, query, embedder!));
-  if (used !== "semantic") lists.push(keywordCandidates(db, query, prefix));
+  if (used !== "keyword") lists.push(await semanticCandidates(db, query, embedder!, scope));
+  if (used !== "semantic") lists.push(keywordCandidates(db, query, prefix, scope));
 
   // Reciprocal rank fusion over sections: a section both rankings like beats one that only one of them likes.
   const fused = new Map<number, Candidate & { score: number }>();
@@ -165,19 +234,24 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
       title: row.title,
       heading: row.heading,
       line: row.line,
-      // Wikilink brackets and table rules are noise in a short excerpt; list items run together without a bullet.
-      snippet: (entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text))
-        .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "• ")
-        .replace(/\[\[|\]\]/g, "")
-        .replace(/\||-{3,}/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
+      snippet: excerpt(row.text, entry.snippet),
       text: row.text,
       tags: tagsOf(db, row.noteId),
       score: entry.score,
     });
   }
-  return { mode: used, total: ranked.length, hits };
+  return { mode: used, total: ranked.length, hits, ...inScope };
+}
+
+/** A short one-line excerpt: the FTS snippet when there is one, else the start of the section. */
+function excerpt(text: string, snippet?: string): string {
+  // Wikilink brackets and table rules are noise in a short excerpt; list items run together without a bullet.
+  return (snippet ?? (text.length > 220 ? `${text.slice(0, 220)}…` : text))
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "• ")
+    .replace(/\[\[|\]\]/g, "")
+    .replace(/\||-{3,}/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export interface NoteRef {
@@ -315,9 +389,12 @@ export interface RecentNote extends NoteRef {
   tags: string[];
 }
 
-export function recentNotes(db: Db, limit = 10, offset = 0): { total: number; notes: RecentNote[] } {
-  const total = (db.prepare("SELECT count(*) AS n FROM notes").get() as { n: number }).n;
-  const rows = db.prepare("SELECT id, path, title, mtime FROM notes ORDER BY mtime DESC, path LIMIT ? OFFSET ?").all(limit, offset) as {
+export function recentNotes(db: Db, limit = 10, offset = 0, filter?: NoteFilter): { total: number; notes: RecentNote[] } {
+  const scope = filterNotes(db, filter);
+  const where = "WHERE ? IS NULL OR id IN (SELECT value FROM json_each(?))";
+  const args = [scope ? 1 : null, JSON.stringify(scope ? [...scope] : [])];
+  const total = (db.prepare(`SELECT count(*) AS n FROM notes ${where}`).get(...args) as { n: number }).n;
+  const rows = db.prepare(`SELECT id, path, title, mtime FROM notes ${where} ORDER BY mtime DESC, path LIMIT ? OFFSET ?`).all(...args, limit, offset) as {
     id: number;
     path: string;
     title: string;
