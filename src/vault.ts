@@ -115,7 +115,9 @@ export class Vault {
     try {
       this.#watcher = watch(this.dir, { recursive: true }, (_event, filename) => {
         // Our own index lives in .vaultmind; dot-folders and node_modules are never indexed either.
-        if (filename && String(filename).split(/[\\/]/).some((part) => part.startsWith(".") || part === "node_modules")) return;
+        // The one exception is Obsidian's settings file: its Excluded files entries decide what is indexed.
+        const parts = filename ? String(filename).split(/[\\/]/) : [];
+        if (parts.join("/") !== ".obsidian/app.json" && parts.some((part) => part.startsWith(".") || part === "node_modules")) return;
         rescanIn(delayMs);
       });
     } catch (error) {

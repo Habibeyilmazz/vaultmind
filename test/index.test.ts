@@ -439,6 +439,26 @@ test("a change in a watched vault makes the next query rescan, unless it is insi
   }
 });
 
+test("a watched vault re-indexes when Obsidian's Excluded files setting changes", async () => {
+  const dir = tempVault();
+  mkdirSync(join(dir, "Templates"), { recursive: true });
+  writeFileSync(join(dir, "Templates", "zebracorn.md"), "# Zebracorn\n");
+  const vault = new Vault({ dir, dbPath: ":memory:", embed: false });
+  const has = (path: string) => Boolean(vault.db.prepare("SELECT 1 FROM notes WHERE path = ?").get(path));
+  try {
+    vault.keepFresh();
+    assert.ok(has("Templates/zebracorn.md"));
+    vault.watch(50);
+    await sleep(1500); // past the rescan that watch() makes on start, so only the watcher can notice the change
+    mkdirSync(join(dir, ".obsidian"), { recursive: true });
+    writeFileSync(join(dir, ".obsidian", "app.json"), JSON.stringify({ userIgnoreFilters: ["Templates/"] }));
+    for (let waited = 0; has("Templates/zebracorn.md") && waited < 5000; waited += 50) await sleep(50);
+    assert.ok(!has("Templates/zebracorn.md"), "excluded note was still indexed 5 s after the setting changed");
+  } finally {
+    vault.close();
+  }
+});
+
 test("Chinese and Japanese text written without spaces is searchable", async () => {
   const dir = tempVault();
   writeFileSync(join(dir, "日本語のノート.md"), "# 日本語のノート\n\n京都の庭で抹茶を飲む。\n");
