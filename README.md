@@ -56,7 +56,9 @@ Claude Desktop (`claude_desktop_config.json`):
 | `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
 | `recent_notes` | Lists the most recently modified notes. |
 
-All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call).
+All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call). On a first run with a large vault, search answers by keyword until the embeddings are ready; run `index` beforehand to avoid the wait.
+
+The tools hand note text to the model as written. If your vault holds clipped web pages, their text reaches the model too.
 
 ## Features
 

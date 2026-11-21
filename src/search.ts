@@ -112,12 +112,16 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
   const { mode = "auto", limit = 10, offset = 0, prefix = false, embedder } = options;
   const semanticReady = Boolean(embedder) && hasEmbeddings(db);
   if (mode === "semantic" && !semanticReady) {
-    throw new Error("Semantic search is unavailable: the index has no embeddings. Run `vaultmind index` without --no-embed, or use keyword mode.");
+    throw new Error(
+      "Semantic search is unavailable right now: the embedding model is not loaded or the index has no embeddings yet. " +
+        'Use mode "auto" or "keyword", or run `vaultmind index` without --no-embed.',
+    );
   }
   const used: SearchResult["mode"] = mode === "semantic" ? "semantic" : mode === "auto" && semanticReady ? "hybrid" : "keyword";
+  // Semantic first: when two sections tie after fusion, the one closer in meaning wins.
   const lists: Candidate[][] = [];
-  if (used !== "semantic") lists.push(keywordCandidates(db, query, prefix));
   if (used !== "keyword") lists.push(await semanticCandidates(db, query, embedder!));
+  if (used !== "semantic") lists.push(keywordCandidates(db, query, prefix));
 
   const fused = new Map<number, { score: number; snippet?: string }>();
   for (const list of lists) {

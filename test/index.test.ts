@@ -110,7 +110,7 @@ test("user input is never interpreted as FTS5 syntax", async () => {
 
 test("semantic mode needs embeddings; with them, auto becomes hybrid", async () => {
   const { dir, db } = indexed();
-  await assert.rejects(search(db, "bread", { mode: "semantic", embedder: fakeEmbedder }), /no embeddings/);
+  await assert.rejects(search(db, "bread", { mode: "semantic", embedder: fakeEmbedder }), /Semantic search is unavailable/);
 
   assert.equal(await embedPending(db, fakeEmbedder), stats(db).chunks);
   assert.equal(stats(db).embedded, stats(db).chunks);

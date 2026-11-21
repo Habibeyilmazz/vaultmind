@@ -83,5 +83,5 @@ test("bad input comes back as a tool error the model can act on", async () => {
   assert.equal(invalid.isError, true);
   const semantic = await client.callTool({ name: "search_notes", arguments: { query: "bread", mode: "semantic" } });
   assert.equal(semantic.isError, true);
-  assert.match(text(semantic), /no embeddings/);
+  assert.match(text(semantic), /Semantic search is unavailable/);
 });
