@@ -16,6 +16,8 @@ export function notePath(input: string): string {
   for (const part of parts) {
     if (!part.trim() || part === "." || part === "..") throw bad("empty, '.' and '..' path parts are not allowed");
     if (part.startsWith(".") || part === "node_modules") throw bad(`'${part}' is a hidden or skipped folder that is never indexed`);
+    // Windows cannot create these names (with or without an extension) and strips trailing dots and spaces.
+    if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(part) || /[. ]$/.test(part.replace(/\.md$/i, ""))) throw bad(`'${part}' is a name Windows refuses`);
     if (/[<>:"|?*#^[\]\u0000-\u001f]/.test(part)) throw bad(`'${part}' holds a character not allowed in note names`);
   }
   return parts.join("/");

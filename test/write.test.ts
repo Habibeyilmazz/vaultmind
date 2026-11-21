@@ -13,7 +13,7 @@ test("notePath accepts vault-relative note paths and adds .md", () => {
 });
 
 test("notePath refuses paths outside the indexed part of the vault", () => {
-  for (const bad of ["/etc/passwd", "C:/x", "c:x", "../outside", "a/../../b", "a//b", "./a", ".obsidian/app", "notes/.git/x", "node_modules/x", "a/ /b", "what?", "a:b", "x[1]", "tag#1", "a\u0000b", ""]) {
+  for (const bad of ["/etc/passwd", "C:/x", "c:x", "../outside", "a/../../b", "a//b", "./a", ".obsidian/app", "notes/.git/x", "node_modules/x", "a/ /b", "what?", "a:b", "x[1]", "tag#1", "a\u0000b", "", "CON", "nul.txt", "a/aux", "Com1", "LPT9.md", "trailing.", "dir /x", "x/name ."]) {
     assert.throws(() => notePath(bad), /Cannot write/, bad);
   }
 });
