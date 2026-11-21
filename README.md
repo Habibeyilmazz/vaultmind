@@ -9,7 +9,7 @@ It indexes your notes into one SQLite file, searches them by keyword and by mean
 
 ## Quickstart
 
-You need Node.js 22.18 or newer and git. The repository ships a small made-up vault to try things on.
+You need Node.js 22.18 or newer (`node --version`) and git. The repository ships a small made-up vault to try things on.
 
 ```bash
 git clone https://github.com/Habibeyilmazz/vaultmind.git
@@ -22,7 +22,9 @@ node dist/cli.js search "when should the garden be watered" --vault examples/vau
 node dist/cli.js serve  --vault examples/vault      # then open http://127.0.0.1:4100
 ```
 
-The first `index` downloads the embedding model (about 23 MB) from the Hugging Face hub. If that is not possible, or you pass `--no-embed`, everything still works with keyword search.
+The first `index` downloads the embedding model (about 23 MB) from the Hugging Face hub and keeps it in `node_modules/@huggingface/transformers/.cache`. If that is not possible, or you pass `--no-embed`, everything still works with keyword search.
+
+Recent npm versions end `npm install` with a warning that install scripts were blocked for `onnxruntime-node` and `protobufjs`. You can ignore it: the quickstart above was run from a fresh clone with those scripts blocked (macOS, npm 12) and the embeddings worked.
 
 Point `--vault` at your own notes folder when you are ready. vaultmind only reads your notes. The one thing it writes is its index, at `<vault>/.vaultmind/index.db` (use `--db` to put it elsewhere, and add `.vaultmind/` to `.gitignore` if the vault is a git repository).
 
@@ -56,7 +58,7 @@ Claude Desktop (`claude_desktop_config.json`):
 | `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
 | `recent_notes` | Lists the most recently modified notes. |
 
-All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call). On a first run with a large vault, search answers by keyword until the embeddings are ready; run `index` beforehand to avoid the wait.
+All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and picks up edits while it runs (it rescans at most every 30 seconds, on the next tool call). If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
 
 The tools hand note text to the model as written. If your vault holds clipped web pages, their text reaches the model too.
 
@@ -89,7 +91,7 @@ query ─┬─ FTS5 MATCH, bm25() ───────┐
 
 Uses Node's built-in `node:sqlite`, so there is no native module to compile.
 
-Measured on an Apple M3 Pro with a generated vault of 2,000 notes (12,000 sections): keyword index 0.3 s, embedding all sections 35 s, a re-index with nothing changed 0.2 s including process start, a hybrid query through the web API about 50 ms, index file 35 MB. It has not been measured on anything larger.
+Measured on an Apple M3 Pro with a generated vault of 2,000 notes (12,000 sections), in two sessions: keyword index 0.3 to 0.4 s, embedding all sections 35 to 52 s, a re-index with nothing changed 0.2 s including process start, a hybrid query through the web API 50 to 150 ms, index file 35 MB. The slower figures are from a run with other jobs busy on the same machine. It has not been measured on anything larger.
 
 ## Command line
 
@@ -126,8 +128,9 @@ Two things use the network, both optional:
 - `ask` is tested against a stubbed Anthropic client only. It has not been run against the live API in this release.
 - The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
 - The link graph has no zoom or pan. It reads well up to a few hundred notes and turns into a dense cloud beyond that.
+- Symbolic links inside the vault are not followed, so a linked note or folder is not indexed.
 - Search returns one hit per note (its best section). Each ranking contributes its 100 best sections, at most three per note, so very broad queries are not exhaustive.
-- Developed on macOS and tested on Linux in CI. Windows is untested.
+- Developed on macOS. CI runs the unit and MCP tests and the built CLI on Linux (Node 22.18 and 24) and on Windows (Node 22). The browser tests run on Linux only, and the embedding model has not been tried on Windows.
 - Not published to npm; install from this repository.
 
 ## Roadmap
