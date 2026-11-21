@@ -13,7 +13,7 @@ Used the product as a newcomer would, from the CLI and as an MCP memory. Search,
 - Refused, with an error the model can act on: absolute paths, drive letters, `..`, empty parts, dot-folders (`.obsidian`, `.git`), `node_modules`, the characters `<>:"|?*#^[]` and control characters, paths through a symbolic link, a folder in the way, and notes that would pass 5 MB (the indexer skips those). `.md` is added when missing.
 - Without the flag nothing changes: the server lists the four read-only tools, as a test checks. `--allow-write` with any other command is an error.
 - Tests: 65 unit/MCP tests (6 new: path rules, create and no-overwrite, append separators, symlinks, and the tool end to end over stdio with `search_notes` finding the note at once). Removing the symlink check makes a test fail.
-- Not done: Windows reserved names (`CON`, `NUL`, ...) are not refused, so writing one fails with the OS error; the symlink test is skipped on Windows; not tried from Claude Desktop itself.
+- Not done: Windows reserved device names (`CON`, `NUL`, ...) are not refused and what Windows does with them was not tried; the symlink test is skipped on Windows; not tried from Claude Desktop itself.
 
 ### Security pass (2026-11-22)
 
