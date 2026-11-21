@@ -31,9 +31,11 @@ const MD_LINK = /\[[^[\]]*\]\(([^[)\s#]+\.md)(?:#[^)\s]*)?\)/g;
 const INLINE_TAG = /(?<=^|\s)#([\p{L}_][\p{L}\p{N}_/-]*)/gu;
 
 function stringList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String);
+  // Only text and numbers: null, true, maps and nested lists must not turn into "null" or "[object Object]".
+  const scalar = (v: unknown): v is string | number => typeof v === "string" || typeof v === "number";
+  if (Array.isArray(value)) return value.filter(scalar).map(String);
   if (typeof value === "string") return value.split(/[,\s]+/);
-  return [];
+  return scalar(value) ? [String(value)] : [];
 }
 
 function splitFrontmatter(raw: string): { frontmatter: Record<string, unknown>; body: string; offset: number } {
@@ -138,7 +140,8 @@ export function parseNote(path: string, raw: string): ParsedNote {
     if (clean) tags.add(clean);
   }
   const fileName = path.split("/").pop()!.replace(/\.md$/i, "");
-  const title = typeof frontmatter.title === "string" && frontmatter.title.trim() ? frontmatter.title.trim() : firstH1 || fileName;
+  const fmTitle = typeof frontmatter.title === "number" ? String(frontmatter.title) : frontmatter.title;
+  const title = typeof fmTitle === "string" && fmTitle.trim() ? fmTitle.trim() : firstH1 || fileName;
 
   return {
     title,

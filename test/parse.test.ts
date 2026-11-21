@@ -88,3 +88,10 @@ test("a hostile note full of unclosed link openers is parsed in linear time", ()
   assert.ok(performance.now() - start < 2000, `took ${Math.round(performance.now() - start)} ms`);
   assert.deepEqual(parseNote("x.md", "[[[[Real Note]] [a [b](c.md)").links, ["Real Note", "c.md"]);
 });
+
+test("frontmatter values that are not text never become tags or aliases called null or [object Object]", () => {
+  const note = parseNote("n.md", "---\ntitle: 2024\ntags:\n  - {a: b}\n  - null\n  - 12\n  - real\n  - [x, y]\naliases: [null, true, Short]\n---\nbody");
+  assert.deepEqual(note.tags, ["12", "real"]);
+  assert.deepEqual(note.aliases, ["Short"]);
+  assert.equal(note.title, "2024");
+});
