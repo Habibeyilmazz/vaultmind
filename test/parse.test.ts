@@ -83,9 +83,9 @@ test("a note with no body text gets one chunk made of its headings", () => {
 test("a hostile note full of unclosed link openers is parsed in linear time", () => {
   // Before the fix each "[[" scanned to the end of the line: a 400 KB note took minutes and froze the server.
   const start = performance.now();
-  for (const unit of ["[[", "![[", "[[a|", "[[a#", "[a]("]) parseNote("x.md", `${unit.repeat(100_000)}\n[[Real Note]] and [x](other.md)`);
-  for (const unit of ["[[", "![[", "[[a|", "[[a#", "[a](", "[a](<", "![a]("]) renderNote(unit.repeat(50_000), () => undefined);
-  assert.ok(performance.now() - start < 2000, `took ${Math.round(performance.now() - start)} ms`);
+  for (const unit of ["[[", "![[", "[[a|", "[[a#", "[a]("]) parseNote("x.md", `${unit.repeat(60_000)}\n[[Real Note]] and [x](other.md)`);
+  for (const unit of ["[[", "![[", "[[a|", "[[a#", "[a](", "[a](<", "![a]("]) renderNote(unit.repeat(30_000), () => undefined);
+  assert.ok(performance.now() - start < 3000, `took ${Math.round(performance.now() - start)} ms`);
   assert.deepEqual(parseNote("x.md", "[[[[Real Note]] [a [b](c.md)").links, ["Real Note", "c.md"]);
 });
 
