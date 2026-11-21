@@ -3,9 +3,8 @@ import * as z from "zod/v4";
 import type { Db } from "./db.ts";
 import type { Hit, NoteFilter } from "./search.ts";
 import { allTags, getNote, parseQuery, recentNotes, relatedNotes, search } from "./search.ts";
-import type { Vault } from "./vault.ts";
+import { VERSION, type Vault } from "./vault.ts";
 
-export const VERSION = "0.1.0";
 const CHARACTER_LIMIT = 25_000;
 
 const responseFormat = z.enum(["markdown", "json"]).default("markdown").describe("'markdown' for readable text, 'json' for structured data");

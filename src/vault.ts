@@ -22,6 +22,8 @@ export interface VaultOptions {
 }
 
 /** One vault folder plus its index: what the CLI, the MCP server and the web UI all share. */
+export const VERSION = "0.1.0";
+
 export class Vault {
   readonly dir: string;
   readonly db: Db;

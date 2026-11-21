@@ -3,11 +3,10 @@ import type { IncomingMessage, Server } from "node:http";
 import { createServer } from "node:http";
 import { basename } from "node:path";
 import { ask, AskError, askAvailable } from "./ask.ts";
-import { VERSION } from "./mcp.ts";
 import { renderNote } from "./render.ts";
 import { buildResolver } from "./indexer.ts";
 import { getNote, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "./search.ts";
-import type { Vault } from "./vault.ts";
+import { VERSION, type Vault } from "./vault.ts";
 
 const WEB_DIR = new URL("../web/", import.meta.url);
 const STATIC: Record<string, [file: string, type: string]> = {

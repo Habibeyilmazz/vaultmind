@@ -1,11 +1,7 @@
 import { parseArgs } from "node:util";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { ask } from "./ask.ts";
-import { createServer, VERSION } from "./mcp.ts";
 import type { SearchMode } from "./search.ts";
 import { HL_END, HL_START, parseQuery, search, stats } from "./search.ts";
-import { Vault } from "./vault.ts";
-import { startWeb } from "./web.ts";
+import { Vault, VERSION } from "./vault.ts";
 
 const HELP = `vaultmind ${VERSION} - local-first search and MCP server for a Markdown/Obsidian vault
 
@@ -106,6 +102,7 @@ export async function main(argv: string[]): Promise<number> {
       vault.sync();
 
       if (command === "ask") {
+        const { ask } = await import("./ask.ts"); // the SDKs are heavy: `search` should not load them
         const result = await ask(vault, text);
         if (values.json) console.log(JSON.stringify(result, null, 2));
         else {
@@ -140,9 +137,10 @@ export async function main(argv: string[]): Promise<number> {
     vault.watch();
     if (command === "serve") {
       const port = integer(values.port, "port", 1, 65535);
-      await startWeb(vault, port);
+      await (await import("./web.ts")).startWeb(vault, port);
       err(`vaultmind is serving ${vault.dir}\n  http://127.0.0.1:${port}\nPress Ctrl+C to stop.`);
     } else {
+      const [{ serveStdio }, { createServer }] = await Promise.all([import("@modelcontextprotocol/server/stdio"), import("./mcp.ts")]);
       serveStdio(() => createServer(vault));
       err(`vaultmind MCP server running on stdio (vault: ${vault.dir})`);
     }
