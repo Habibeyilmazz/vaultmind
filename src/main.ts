@@ -12,7 +12,8 @@ Commands:
   search <query>     Search from the terminal. Narrow it with tag:<tag> and path:<folder>,
                      e.g. vaultmind search "tag:project path:work deadline"
   serve              Start the local web UI (search, related notes, link graph)
-  mcp                Run the MCP server on stdio, for Claude Code / Claude Desktop
+  mcp                Run the MCP server on stdio, for Claude Code / Claude Desktop.
+                     Read-only; add --allow-write to let Claude create notes and append to them
   ask <question>     Answer a question from your notes with citations (needs ANTHROPIC_API_KEY)
 
 Options:
@@ -24,6 +25,7 @@ Options:
   -n, --limit <n>    search: number of results (default: 10)
   --json             search, ask: print JSON
   -p, --port <n>     serve: port on 127.0.0.1 (default: 4100)
+  --allow-write      mcp: add the write_note tool (creates and appends, never overwrites or deletes)
   -h, --help         Show this help
   --version          Show the version
 `;
@@ -52,6 +54,7 @@ export async function main(argv: string[]): Promise<number> {
         limit: { type: "string", short: "n", default: "10" },
         json: { type: "boolean" },
         port: { type: "string", short: "p", default: "4100" },
+        "allow-write": { type: "boolean" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean" },
       },
@@ -66,6 +69,7 @@ export async function main(argv: string[]): Promise<number> {
       return command || values.help ? 0 : 1;
     }
     if (!["index", "search", "serve", "mcp", "ask"].includes(command)) throw new Error(`Unknown command "${command}". Run vaultmind --help.`);
+    if (values["allow-write"] && command !== "mcp") throw new Error("--allow-write only applies to the mcp command.");
     if (!MODES.includes(values.mode)) throw new Error(`--mode must be one of: ${MODES.join(", ")}`);
 
     const vault = new Vault({
@@ -143,8 +147,8 @@ export async function main(argv: string[]): Promise<number> {
       err(`vaultmind is serving ${vault.dir}\n  http://127.0.0.1:${port}\nPress Ctrl+C to stop.`);
     } else {
       const [{ serveStdio }, { createServer }] = await Promise.all([import("@modelcontextprotocol/server/stdio"), import("./mcp.ts")]);
-      serveStdio(() => createServer(vault));
-      err(`vaultmind MCP server running on stdio (vault: ${vault.dir})`);
+      serveStdio(() => createServer(vault, { allowWrite: values["allow-write"] }));
+      err(`vaultmind MCP server running on stdio (vault: ${vault.dir}${values["allow-write"] ? ", write_note enabled" : ", read-only"})`);
     }
     return 0;
   } catch (error) {

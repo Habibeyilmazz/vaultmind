@@ -85,10 +85,10 @@ export class Vault {
 
   /**
    * For long-running servers: picks up edits made while running (at most every 30 s) and embeds them
-   * in the background, so a query never waits for the model.
+   * in the background, so a query never waits for the model. maxAgeMs 0 re-indexes now.
    */
-  keepFresh(): void {
-    const stats = this.sync(30_000);
+  keepFresh(maxAgeMs = 30_000): void {
+    const stats = this.sync(maxAgeMs);
     if (!this.#embedStarted || (stats && (stats.added || stats.updated))) {
       this.#embedStarted = true;
       this.embedPending().catch((error) => this.#log(`Embedding failed: ${error instanceof Error ? error.message : error}`));

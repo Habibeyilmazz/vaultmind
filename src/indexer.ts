@@ -18,7 +18,7 @@ export interface IndexStats {
 
 const SKIP_DIRS = new Set(["node_modules"]);
 /** Larger files are almost always pasted binary data, not notes. */
-const MAX_NOTE_BYTES = 5 * 1024 * 1024;
+export const MAX_NOTE_BYTES = 5 * 1024 * 1024;
 
 /** All .md files under dir as vault-relative POSIX paths. Dot-directories (.obsidian, .git, .trash) are skipped. */
 export function listNotes(dir: string): string[] {

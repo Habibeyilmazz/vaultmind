@@ -4,6 +4,7 @@ import type { Db } from "./db.ts";
 import type { Hit, NoteFilter } from "./search.ts";
 import { allTags, getNote, parseQuery, recentNotes, relatedNotes, search } from "./search.ts";
 import { VERSION, type Vault } from "./vault.ts";
+import { writeNote } from "./write.ts";
 
 const CHARACTER_LIMIT = 25_000;
 
@@ -33,9 +34,38 @@ const emptyScope = (db: Db, filter: NoteFilter) => {
 };
 const notFound = (name: string) => new Error(`No note matches '${name}'. Use search_notes or recent_notes to find a valid path.`);
 
-/** Builds a fresh MCP server over an open vault. Tools are read-only: nothing here writes to the vault. */
-export function createServer(vault: Vault): McpServer {
+/** Builds a fresh MCP server over an open vault. Tools are read-only unless allowWrite adds write_note. */
+export function createServer(vault: Vault, { allowWrite = false } = {}): McpServer {
   const server = new McpServer({ name: "vaultmind", version: VERSION });
+
+  if (allowWrite) {
+    server.registerTool(
+      "write_note",
+      {
+        title: "Write note",
+        description: `Save text to the user's vault: create a new Markdown note, or append to the end of an existing one. Use it to remember something for later (a decision, a summary, a to-do) when the user asks you to.
+
+Never overwrites, renames or deletes: creating fails if the note exists, and append adds a new paragraph at the end (creating the note if it is missing).
+The note is searchable as soon as this returns. Use the exact path from search_notes or recent_notes when appending to a note.
+
+Examples:
+  - "Remember that the plumber comes on Tuesday" -> path="inbox/Plumber.md", content="The plumber comes on Tuesday at 9."
+  - "Add today's decision to my project log" -> path="projects/Weather Station.md", content="## 2024-05-02\\n...", append=true`,
+        inputSchema: z.strictObject({
+          path: z.string().min(1).max(300).describe("Vault-relative path, e.g. 'inbox/Idea.md'; '.md' is added if missing. Folders are created as needed"),
+          content: z.string().min(1).max(100_000).describe("Markdown to write. Frontmatter, #tags and [[wikilinks]] work as in any note"),
+          append: z.boolean().default(false).describe("true: add to the end of the note; false: create a new note, failing if it exists"),
+        }),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      },
+      async ({ path, content, append }) => {
+        const written = writeNote(vault.dir, path, content, append);
+        vault.keepFresh(0); // index now, so the next search finds it; embedding follows in the background
+        const verb = written.created ? "Created" : "Appended to";
+        return { content: [{ type: "text" as const, text: `${verb} ${written.path}.` }], structuredContent: written };
+      },
+    );
+  }
 
   server.registerTool(
     "search_notes",

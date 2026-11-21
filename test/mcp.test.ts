@@ -127,3 +127,40 @@ test("get_note never cuts an emoji in half at a page boundary", async () => {
   assert.ok(wellFormed(second.body));
   assert.equal(first.body + second.body, body);
 });
+
+test("with --allow-write, write_note saves a note that search finds at once, and refuses to overwrite", async () => {
+  const writable = tempVault();
+  const writer = new Client({ name: "vaultmind-test", version: "1.0.0" });
+  await writer.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [join(import.meta.dirname, "..", "src", "cli.ts"), "mcp", "--vault", writable, "--no-embed", "--allow-write"],
+      env: getDefaultEnvironment(),
+    }),
+  );
+  try {
+    const tool = (await writer.listTools()).tools.find((t) => t.name === "write_note");
+    assert.equal(tool?.annotations?.readOnlyHint, false);
+    assert.equal(tool?.annotations?.destructiveHint, false);
+
+    const created = await writer.callTool({ name: "write_note", arguments: { path: "inbox/Plumber", content: "The plumber comes on Tuesday. #home" } });
+    assert.equal(text(created), "Created inbox/Plumber.md.");
+    const found = await writer.callTool({ name: "search_notes", arguments: { query: "plumber tag:home" } });
+    assert.match(text(found), /## Plumber\npath: inbox\/Plumber\.md/);
+
+    const again = await writer.callTool({ name: "write_note", arguments: { path: "inbox/Plumber.md", content: "overwrite" } });
+    assert.equal(again.isError, true);
+    assert.match(text(again), /already exists/);
+
+    const appended = await writer.callTool({ name: "write_note", arguments: { path: "inbox/Plumber.md", content: "Bring the spare key.", append: true } });
+    assert.equal(text(appended), "Appended to inbox/Plumber.md.");
+    const note = await writer.callTool({ name: "get_note", arguments: { note: "Plumber" } });
+    assert.match(text(note), /The plumber comes on Tuesday\. #home\n\nBring the spare key\./);
+
+    const escape = await writer.callTool({ name: "write_note", arguments: { path: "../escape", content: "x" } });
+    assert.equal(escape.isError, true);
+    assert.match(text(escape), /'\.\.' path parts are not allowed/);
+  } finally {
+    await writer.close();
+  }
+});
