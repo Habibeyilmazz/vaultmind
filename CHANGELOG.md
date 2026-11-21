@@ -19,6 +19,7 @@ Found by cloning the repository fresh, following the README literally, and readi
 ### Changed
 
 - CI runs on Node 22.18.0 (the documented minimum, with the browser tests), Node 24, and Windows with Node 22. `.gitattributes` pins LF line endings so the fixture vault is identical on every platform.
+- New manual workflow `embeddings.yml` (`gh workflow run embeddings.yml`) indexes the example vault with the real model and runs a semantic search on Linux, Windows and macOS. It passed on all three on 2026-11-21. It is manual because it downloads the model from the Hugging Face hub.
 - README: where the model is cached, the npm "install scripts blocked" warning, re-measured timings, symlinks are not followed, what is and is not tested on Windows.
 
 ### Known gaps
@@ -26,7 +27,7 @@ Found by cloning the repository fresh, following the README literally, and readi
 - `ask` has still never run against the live Anthropic API (no key on the build machine); only the stubbed client is tested.
 - English-only stop words, stemming and default embedding model.
 - No zoom or pan in the link graph.
-- On Windows only the keyword path is tested in CI; the embedding model and the web UI in a browser are not.
+- The web UI has not been opened in a browser on Windows (its API tests do run there).
 - Symbolic links inside a vault are skipped.
 
 ## [0.1.0] - 2026-11-21
