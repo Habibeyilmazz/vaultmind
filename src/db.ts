@@ -6,6 +6,8 @@ export type Db = DatabaseSync;
 
 /** Bump when the schema changes. The index is a cache: a version mismatch drops and rebuilds it. */
 const SCHEMA_VERSION = 2;
+/** Marks the file as a vaultmind index ("vmnd"). Indexes made before it existed are recognised by their chunks_fts table. */
+const APPLICATION_ID = 0x766d6e64;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS notes(
@@ -66,8 +68,14 @@ export function openDb(file: string): Db {
     // Check again inside the write lock: a process that got there first has already built the schema.
     transaction(db, () => {
       if (current() === SCHEMA_VERSION) return;
+      // --db can name any file: never drop the tables of a database some other program owns.
+      const appId = (db.prepare("PRAGMA application_id").get() as { application_id: number }).application_id;
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+      if (appId !== APPLICATION_ID && tables.length && !tables.some((t) => t.name === "chunks_fts")) {
+        throw new Error(`${file} is a database that vaultmind did not create; refusing to overwrite it. Choose another --db file.`);
+      }
       db.exec("DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS chunks_fts; DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS meta;");
-      db.exec(`${SCHEMA} PRAGMA user_version = ${SCHEMA_VERSION};`);
+      db.exec(`${SCHEMA} PRAGMA user_version = ${SCHEMA_VERSION}; PRAGMA application_id = ${APPLICATION_ID};`);
     });
   }
   return db;

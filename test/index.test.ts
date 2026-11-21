@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, watch, writeFileSync } from 
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { openDb } from "../src/db.ts";
 import { embedPending, indexVault, listNotes } from "../src/indexer.ts";
@@ -18,6 +19,28 @@ function indexed() {
   indexVault(db, dir);
   return { dir, db };
 }
+
+test("openDb refuses to rebuild a database another program owns, but rebuilds an old vaultmind index", () => {
+  const dir = tempVault();
+  const foreign = join(dir, "other-app.sqlite");
+  const other = new DatabaseSync(foreign);
+  other.exec("CREATE TABLE notes(body TEXT); INSERT INTO notes VALUES ('keep me'); PRAGMA user_version = 7;");
+  other.close();
+  assert.throws(() => openDb(foreign), /did not create/);
+  const check = new DatabaseSync(foreign);
+  assert.deepEqual({ ...(check.prepare("SELECT body FROM notes").get() as object) }, { body: "keep me" });
+  check.close();
+
+  const old = join(dir, "old.db");
+  const v1 = new DatabaseSync(old);
+  v1.exec("CREATE TABLE notes(x); CREATE VIRTUAL TABLE chunks_fts USING fts5(text); PRAGMA user_version = 1;");
+  v1.close();
+  const rebuilt = openDb(old);
+  indexVault(rebuilt, dir);
+  assert.ok(stats(rebuilt).notes > 0);
+  rebuilt.close();
+  openDb(old).close(); // and opens again once it carries the vaultmind marker
+});
 
 test("listNotes skips dot-directories and non-markdown files", () => {
   const dir = tempVault();
