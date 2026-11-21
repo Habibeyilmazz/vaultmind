@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Reliability pass (2026-11-22)
+
+Tried to break the tool on a synthetic vault: empty note, broken frontmatter, BOM, CRLF, invalid UTF-8, a 3 MB note without spaces, nonsense dates and wikilinks, CJK names; then odd CLI flags, an unreachable model hub, a missing vault, 14 odd web API URLs (including a 200 KB query) and 24 odd MCP calls. Nothing crashed or returned a 5xx; two real bugs came out of it, plus the last round's Windows gap.
+
+- Fixed: `write_note` now refuses Windows reserved device names (`CON`, `NUL`, `COM1`, `LPT9`, ..., with or without an extension) and folder or note names ending in a dot or space. Test; it fails without the fix. Still not tried on an actual Windows machine.
+- Fixed: `vaultmind search --json` left the internal highlight markers (`\u0001`, `\u0002`) in each hit's `snippet`. They are now removed from the JSON; the terminal and web UI still use them. New `test/cli.test.ts` (the first test that runs the CLI itself); it fails without the fix.
+- Known, not fixed: search does not match inside a run of Chinese or Japanese text written without spaces (`日本語` does not find a note titled `日本語のノート`), because the SQLite tokenizer treats such a run as one word. Needs a different tokenizer or n-gram indexing and an index rebuild; not done.
+- Checked, no change: an offline or unknown embedding model falls back to keyword search with a message; the end-to-end browser journey already exists in `e2e/`. Not tried from Claude Desktop; `ask` still untested against the live API; the symlink test is still skipped on Windows.
+
 ### Let Claude save notes (2026-11-22)
 
 Used the product as a newcomer would, from the CLI and as an MCP memory. Search, filters, the web UI and the four tools did their jobs; the gap that hurt most was that "use the vault as memory" only went one way. Claude could look things up but not remember anything new, and in Claude Desktop (no file tools of its own) there was no way at all. The previous round's reported gaps were checked: none is a bug (the `/security-review` skill still cannot run from this session's folder, `ask` still has no live key, nobody here can look at Windows by eye).
