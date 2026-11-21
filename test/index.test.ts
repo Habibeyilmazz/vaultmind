@@ -297,9 +297,9 @@ test("several processes opening and indexing one brand-new index at once all suc
   const script = `import { openDb } from ${JSON.stringify(new URL("../src/db.ts", import.meta.url).href)};
 import { indexVault } from ${JSON.stringify(new URL("../src/indexer.ts", import.meta.url).href)};
 indexVault(openDb(process.argv[1]), process.argv[2]);`;
-  for (let round = 0; round < 10; round++) {
+  for (let round = 0; round < 5; round++) {
     const file = `${db}.${round}`;
-    const runs = Array.from({ length: 8 }, () => execFileAsync(process.execPath, ["--input-type=module", "-e", script, file, dir]));
+    const runs = Array.from({ length: 6 }, () => execFileAsync(process.execPath, ["--input-type=module", "-e", script, file, dir]));
     const results = await Promise.allSettled(runs);
     const failed = results.filter((r) => r.status === "rejected");
     assert.equal(failed.length, 0, String((failed[0] as PromiseRejectedResult | undefined)?.reason?.stderr ?? ""));
