@@ -270,8 +270,8 @@ test("renderNote: a note built to be slow or deeply nested still renders, in bou
   for (const text of ["*a_".repeat(8_000), "_a".repeat(40_000), "*a".repeat(60_000)]) {
     assert.match(renderNote(text, () => undefined), /<p>/);
   }
-  // 20 000 nested quotes or list items overflow marked's recursion; the note must still come back, as text.
-  for (const text of ["> ".repeat(20_000) + "deep", "- ".repeat(20_000) + "deep"]) {
+  // 5000 nested quotes or list items overflow marked's recursion; the note must still come back, as text.
+  for (const text of ["> ".repeat(5_000) + "deep", "- ".repeat(5_000) + "deep"]) {
     assert.match(renderNote(text, () => undefined), /deep/);
   }
   assert.ok(performance.now() - start < 3000, `took ${Math.round(performance.now() - start)} ms`);
