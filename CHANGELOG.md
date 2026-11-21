@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Security pass (2026-11-22)
+
+Reviewed every trust boundary (web API and Host check, `/api/ask`, note rendering, MCP inputs, the indexer, the CI workflows), ran `npm audit` (0 vulnerabilities) and searched the git history for keys and personal data (none).
+
+- Fixed: DNS-rebinding bypass of the web server's Host check. A page on another domain that resolves to 127.0.0.1 could `fetch("/.//127.0.0.1/api/recent")`; the browser sends the path `//127.0.0.1/api/recent`, and the server resolved it as a URL whose host replaced the attacker's Host header, so every note was readable cross-site. The request URL is now joined from Host and path. Regression test over a real socket (port 4105, `WEB_TEST_PORT` overrides).
+- Fixed: a note containing a long run of unclosed `[[`, `![[`, `[[a|` or `[a](` took quadratic time to index and render (a 400 KB note: minutes, with the web and MCP servers frozen). Link targets, headings and labels can no longer contain `[`, which Obsidian does not allow in link names anyway.
+- CI: actions pinned to commit SHAs, and `actions/checkout` no longer leaves the token in `.git/config`. Workflows already had `contents: read` only.
+- Checked and left as is: the note renderer (raw HTML escaped, links allow-listed, tried 20+ XSS payloads), `/api/ask` cross-site protection (Origin + JSON content type), FTS query quoting, YAML alias bombs (the `yaml` package caps them), static file serving (fixed map, no path joins), symlinks (skipped).
+- Known gap: `marked` itself is quadratic on a long run of `[a](` (about 3 s for 256 KB). It only affects opening that note in the web UI, not indexing or MCP.
+- Stopped four leftover `serve` processes from earlier runs on ports 4100-4103.
+
 ### Design pass (2026-11-22)
 
 Looked at the running web UI at 1360, 900 and 390 px wide, light and dark, with the keyboard and with the server stopped.
