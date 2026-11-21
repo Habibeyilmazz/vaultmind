@@ -61,6 +61,135 @@ test("home shows the whole link graph and recent notes", async () => {
   await page.close();
 });
 
+/** Pairs of visible note names in the graph whose boxes overlap. */
+const overlappingNames = (page: Page) =>
+  page.$$eval("#main .graph a:not(.quiet) text", (texts) => {
+    const boxes = texts.map((text) => [text.textContent, text.getBoundingClientRect()] as const);
+    return boxes.flatMap(([a, x], i) =>
+      boxes.slice(i + 1).flatMap(([b, y]) => (x.left < y.right && x.right > y.left && x.top < y.bottom && x.bottom > y.top ? [`${a} / ${b}`] : [])),
+    );
+  });
+
+test("graph: note names never cover each other, on a desktop or a phone", async () => {
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 375, height: 700 }]) {
+    const page = await open("", { viewport });
+    await page.waitForSelector("#main .graph circle");
+    assert.deepEqual(await overlappingNames(page), [], `at ${viewport.width}px`);
+    assert.ok((await page.locator("#main .graph a:not(.quiet) text").count()) >= 6, `most names still fit at ${viewport.width}px`);
+    await page.close();
+  }
+});
+
+test("graph: zoom with buttons, wheel and drag; a drag never opens a note", async () => {
+  const page = await open();
+  await page.waitForSelector("#main .graph circle");
+  const state = () =>
+    page.evaluate(() => {
+      const [a, b] = [...document.querySelectorAll("#main .graph a")].slice(0, 2).map((link) => link.querySelector("circle:last-of-type")!);
+      const at = (c: Element) => [Number(c.getAttribute("cx")), Number(c.getAttribute("cy"))];
+      return { gap: Math.hypot(at(a)[0] - at(b)[0], at(a)[1] - at(b)[1]), first: at(a), r: a.getAttribute("r"), zoomed: document.querySelector("#main .graph")!.classList.contains("zoomed") };
+    });
+  const pressed = (name: string) => page.getAttribute(`button[aria-label="${name}"]`, "aria-disabled");
+  const start = await state();
+  assert.equal(start.zoomed, false);
+  assert.deepEqual([await pressed("Zoom out"), await pressed("Zoom in"), await pressed("Reset zoom")], ["true", "false", "true"]);
+
+  // Keyboard: the buttons are ordinary buttons.
+  await page.focus('button[aria-label="Zoom in"]');
+  await page.keyboard.press("Enter");
+  const once = await state();
+  assert.ok(Math.abs(once.gap / start.gap - 1.6) < 0.01, "notes move apart");
+  assert.equal(once.r, start.r, "circles keep their size");
+  assert.equal(once.zoomed, true);
+  assert.equal(await pressed("Zoom out"), "false");
+  assert.deepEqual(await overlappingNames(page), []);
+
+  // Wheel zooms around the pointer; dragging pans.
+  const box = (await page.locator("#main svg.graph").boundingBox())!;
+  const centre = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.move(centre[0], centre[1]);
+  await page.mouse.wheel(0, -300);
+  let wheeled = await state();
+  for (let i = 0; i < 100 && wheeled.gap <= once.gap * 1.5; i++) {
+    await page.waitForTimeout(20);
+    wheeled = await state();
+  }
+  assert.ok(wheeled.gap > once.gap * 1.5, "the wheel zooms in");
+  await page.mouse.down();
+  await page.mouse.move(centre[0] + 120, centre[1] + 60, { steps: 4 });
+  await page.mouse.up();
+  const panned = await state();
+  assert.ok(Math.abs(panned.first[0] - wheeled.first[0] - 120) < 2 && Math.abs(panned.first[1] - wheeled.first[1] - 60) < 2, "a drag moves the drawing with the pointer");
+  assert.equal(panned.gap.toFixed(1), wheeled.gap.toFixed(1));
+
+  // A drag that starts and ends on a note is still a drag, not a click.
+  const home = page.locator("#main .graph a", { hasText: "Home" }).locator("circle");
+  await home.scrollIntoViewIfNeeded();
+  const spot = (await home.boundingBox())!;
+  await page.mouse.move(spot.x + 4, spot.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(spot.x + 40, spot.y + 30, { steps: 4 });
+  await page.mouse.up();
+  assert.equal(new URL(page.url()).hash, "", "still on the graph");
+
+  // Tab to a note that is off screen: it is brought into view.
+  while ((await pressed("Zoom in")) === "false") await page.click('button[aria-label="Zoom in"]');
+  assert.equal(await pressed("Zoom in"), "true", "the zoom stops at its limit");
+  for (const link of await page.locator("#main .graph a").all()) {
+    await link.focus();
+    const inside = await link.locator("circle").last().evaluate((circle) => {
+      const [, , width, height] = (circle as SVGCircleElement).ownerSVGElement!.getAttribute("viewBox")!.split(" ").map(Number);
+      const [x, y] = [Number(circle.getAttribute("cx")), Number(circle.getAttribute("cy"))];
+      return x >= 0 && x <= width && y >= 0 && y <= height;
+    });
+    assert.equal(inside, true, "the focused note is on screen");
+  }
+
+  await page.click('button[aria-label="Reset zoom"]');
+  const back = await state();
+  assert.deepEqual([back.gap.toFixed(1), back.zoomed, back.first], [start.gap.toFixed(1), false, start.first]);
+  await page.close();
+});
+
+test("graph: two fingers pinch it larger on a touch screen", async () => {
+  const page = await open("", { viewport: { width: 375, height: 700 }, hasTouch: true });
+  await page.waitForSelector("#main .graph circle");
+  await page.locator("#main svg.graph").scrollIntoViewIfNeeded();
+  const box = (await page.locator("#main svg.graph").boundingBox())!;
+  const [x, y] = [Math.round(box.x + box.width / 2), Math.round(box.y + Math.min(box.height, 300) / 2)];
+  const touch = await page.context().newCDPSession(page);
+  const fingers = (spread: number) => [{ x: x - spread, y, id: 1 }, { x: x + spread, y, id: 2 }];
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: fingers(30) });
+  for (const spread of [45, 60, 75, 90]) await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: fingers(spread) });
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForSelector("#main .graph.zoomed");
+  assert.equal(await page.getAttribute('button[aria-label="Reset zoom"]', "aria-disabled"), "false");
+  assert.equal(new URL(page.url()).hash, "");
+  await page.close();
+});
+
+test("the vault opening, and the server going away, are both said in words", async () => {
+  const page = await browser.newPage(); // not open(): the aborted request below is meant to log an error
+  let release = () => {};
+  await page.route("**/api/status", async (route) => {
+    await new Promise<void>((resolve) => (release = resolve));
+    await route.continue();
+  });
+  await page.goto(BASE);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".loading")!).visibility === "visible");
+  assert.equal(await page.textContent("#main .loading"), "Opening your vault…");
+  release();
+  await page.waitForSelector("#main .graph circle");
+  assert.equal(await page.locator(".loading").count(), 0);
+
+  assert.equal(await page.locator("[aria-live] #list-title").count(), 1, "the result count is announced");
+  await page.route("**/api/search*", (route) => route.abort());
+  await page.fill("#q", "starter");
+  await page.waitForFunction(() => document.querySelector("#list-title")?.textContent === "Search failed");
+  assert.match((await page.textContent("#list-hint"))!, /not answering.*vaultmind serve/);
+  await page.close();
+});
+
 test("search as you type, open with Enter, follow links", async () => {
   const page = await open();
   await page.keyboard.press("/");
@@ -153,6 +282,34 @@ test("ask: answer with numbered citations (API mocked in the browser)", async ()
   await page.unroute("**/api/ask");
   await page.click("#ask");
   await page.waitForFunction(() => document.querySelector(".answer .body")?.textContent?.includes("ANTHROPIC_API_KEY"));
+  await page.close();
+});
+
+test("tablet: the list stays beside the note and its connections", async () => {
+  const page = await open("#/note/kitchen%2FWeekend%20Loaf.md", { viewport: { width: 820, height: 700 } });
+  await page.waitForSelector("#side .graph circle");
+  const rect = (selector: string) => page.locator(selector).evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect);
+  const [list, main, side] = [await rect("nav.list"), await rect("#main"), await rect("#side")];
+  assert.ok(list.bottom >= 699, `the list reaches the bottom of the window (${list.bottom})`);
+  assert.ok(Math.abs(side.left - main.left) <= 1 && side.top >= main.bottom - 1, "connections sit under the note, in its column");
+  assert.ok(list.right <= main.left + 1);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  assert.ok(Math.abs((await rect("nav.list")).top) < 1, "the list stays in view while the note scrolls");
+  // Opening another note from the list starts at its top.
+  await page.click("#list a >> text=Sourdough Starter");
+  await page.waitForFunction(() => document.querySelector(".note h1")?.textContent === "Sourdough Starter");
+  const top = (await rect(".note h1")).top;
+  assert.ok(top >= 0 && top < 200, `the new note starts at the top (${top})`);
+  await page.close();
+});
+
+test("phone: a note opened from the list comes to the top of the screen", async () => {
+  const page = await open("", { viewport: { width: 375, height: 700 } });
+  await page.waitForSelector("#main .graph circle");
+  await page.click("#list a >> text=Running Log");
+  await page.waitForFunction(() => document.querySelector(".note h1")?.textContent === "Running Log");
+  const top = await page.locator(".note h1").evaluate((el) => el.getBoundingClientRect().top);
+  assert.ok(top >= 0 && top < 700 / 3, `the heading is near the top (${top})`);
   await page.close();
 });
 

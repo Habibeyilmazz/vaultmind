@@ -15,7 +15,9 @@ function h(tag, attrs = {}, ...children) {
 const s = (tag, attrs = {}, ...children) => h(tag, { ...attrs, svg: true }, ...children);
 
 async function api(path, options) {
-  const response = await fetch(path, options);
+  const response = await fetch(path, options).catch(() => {
+    throw new Error("The vaultmind server is not answering. Check that “vaultmind serve” is still running, then reload this page.");
+  });
   const data = await response.json().catch(() => ({ error: `Unexpected response (${response.status}).` }));
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
@@ -163,7 +165,6 @@ function layout(nodes, edges, width, height) {
   });
   const k = Math.sqrt((width * height) / Math.max(n, 1)) * 0.72;
   const steps = Math.max(40, Math.min(400, Math.floor(3e7 / (n * n + 1))));
-  const pad = 46;
   for (let step = 0; step < steps; step++) {
     for (const node of nodes) node.dx = node.dy = 0;
     for (let i = 0; i < n; i++) {
@@ -192,20 +193,22 @@ function layout(nodes, edges, width, height) {
     }
     const heat = (1 - step / steps) * k * 0.5;
     for (const node of nodes) {
-      // A little gravity keeps unlinked notes from drifting to the corners.
-      node.dx += (width / 2 - node.x) * 0.06;
-      node.dy += (height / 2 - node.y) * 0.06;
+      // Gravity stands in for a frame: it grows with distance while the push of the other notes fades, so an
+      // unlinked note settles beside the rest instead of flying off, and no hard wall lines the outer notes up in rows.
+      node.dx += (width / 2 - node.x) * 3;
+      node.dy += (height / 2 - node.y) * 3;
       const length = Math.hypot(node.dx, node.dy) || 1;
-      node.x = Math.min(width - pad, Math.max(pad, node.x + (node.dx / length) * Math.min(length, heat)));
-      node.y = Math.min(height - pad, Math.max(pad - 22, node.y + (node.dy / length) * Math.min(length, heat)));
+      node.x += (node.dx / length) * Math.min(length, heat);
+      node.y += (node.dy / length) * Math.min(length, heat);
     }
   }
   // Stretch the result to the frame, leaving room for the labels under the circles.
   const fit = (value, min, max, from, to) => (max - min < 1 ? (from + to) / 2 : from + ((value - min) / (max - min)) * (to - from));
   const xs = nodes.map((node) => node.x);
   const ys = nodes.map((node) => node.y);
+  const edge = Math.min(72, width * 0.2); // room for half a name; less in the narrow connections column
   for (const node of nodes) {
-    node.x = fit(node.x, Math.min(...xs), Math.max(...xs), 72, width - 72);
+    node.x = fit(node.x, Math.min(...xs), Math.max(...xs), edge, width - edge);
     node.y = fit(node.y, Math.min(...ys), Math.max(...ys), 26, height - 48);
   }
 }
@@ -229,7 +232,15 @@ function folderPalette(nodes) {
   return { colour, legend };
 }
 
-function drawGraph(graph, { width, height, focusId, label, colour }) {
+const MAX_ZOOM = 8;
+const ruler = document.createElement("canvas").getContext("2d"); // measures note names before they are on the page
+
+/**
+ * Draws a graph as SVG. With onZoom it can also be zoomed and panned: wheel, drag, pinch, and svg.zoom(factor)
+ * for buttons (0 resets). Zooming spreads the notes apart while circles and names keep their size,
+ * so a crowded graph gets readable instead of just bigger.
+ */
+function drawGraph(graph, { width, height, focusId, label, colour, onZoom }) {
   const nodes = graph.nodes.map((node) => ({ ...node }));
   const ids = new Set(nodes.map((node) => node.id));
   const edges = graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
@@ -240,41 +251,130 @@ function drawGraph(graph, { width, height, focusId, label, colour }) {
     neighbours.get(edge.source).add(edge.target);
     neighbours.get(edge.target).add(edge.source);
   }
-  const quiet = nodes.length > 60; // too many labels to read: show them on hover only
+  const dense = nodes.length > 60;
   const shrink = Math.max(0.35, Math.min(1, Math.sqrt(150 / nodes.length))); // smaller circles in crowded graphs
-  const radius = (degree) => (6 + Math.min(Math.sqrt(degree) * 2.6, 12)) * shrink;
 
-  const lines = edges.map((edge) => {
-    const a = byId.get(edge.source);
-    const b = byId.get(edge.target);
-    return Object.assign(s("line", { x1: a.x.toFixed(1), y1: a.y.toFixed(1), x2: b.x.toFixed(1), y2: b.y.toFixed(1) }), { edge });
-  });
-  const svg = s("svg", { class: quiet ? "graph dense" : "graph", viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": label }, lines);
-  const anchors = nodes.map((node) => {
+  ruler.font = `500 12.5px ${getComputedStyle(document.documentElement).getPropertyValue("--ui")}`; // as .graph text in style.css
+  const lines = edges.map((edge) => Object.assign(s("line"), { edge, a: byId.get(edge.source), b: byId.get(edge.target) }));
+  const svg = s("svg", { class: dense ? "graph dense" : "graph", viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": label }, lines);
+  for (const node of nodes) {
     const degree = neighbours.get(node.id).size - 1;
-    const anchor = s(
-      "a",
-      { href: noteHref(node.path), class: [node.id === focusId ? "focus" : "", quiet && node.id !== focusId ? "quiet" : ""].join(" ").trim() || null },
-      s("title", {}, `${node.title} (${plural(degree, "link")})`),
-      node.id === focusId && s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: (radius(degree) + 7).toFixed(1), class: "halo" }),
-      s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: radius(degree).toFixed(1), class: colour(node.path) }),
-      // The focused note needs no label: its title is the page heading.
-      node.id !== focusId &&
-        s("text", { x: node.x.toFixed(1), y: (node.y + radius(degree) + 20).toFixed(1) }, node.title.length > 26 ? `${node.title.slice(0, 25)}…` : node.title),
-    );
+    const focused = node.id === focusId;
+    node.degree = degree;
+    node.r = (6 + Math.min(Math.sqrt(degree) * 2.6, 12)) * shrink;
+    node.name = node.title.length > 26 ? `${node.title.slice(0, 25)}…` : node.title;
+    node.half = ruler.measureText(node.name).width / 2 + 3;
+    node.circles = [focused && s("circle", { r: (node.r + 7).toFixed(1), class: "halo" }), s("circle", { r: node.r.toFixed(1), class: colour(node.path) })].filter(Boolean);
+    // The focused note needs no label: its title is the page heading.
+    node.text = focused ? null : s("text", {}, node.name);
+    node.anchor = s("a", { href: noteHref(node.path), class: focused ? "focus" : null }, s("title", {}, `${node.title} (${plural(degree, "link")})`), node.circles, node.text);
     const near = neighbours.get(node.id);
     const setHover = (on) => {
       svg.classList.toggle("hovering", on);
-      anchors.forEach((other, i) => other.classList.toggle("near", on && near.has(nodes[i].id)));
-      lines.forEach((line) => line.classList.toggle("near", on && (line.edge.source === node.id || line.edge.target === node.id)));
+      for (const other of nodes) other.anchor.classList.toggle("near", on && near.has(other.id));
+      for (const line of lines) line.classList.toggle("near", on && (line.edge.source === node.id || line.edge.target === node.id));
     };
-    anchor.addEventListener("pointerenter", () => setHover(true));
-    anchor.addEventListener("pointerleave", () => setHover(false));
-    anchor.addEventListener("focus", () => setHover(true));
-    anchor.addEventListener("blur", () => setHover(false));
-    return anchor;
+    node.anchor.addEventListener("pointerenter", () => setHover(true));
+    node.anchor.addEventListener("pointerleave", () => setHover(false));
+    node.anchor.addEventListener("focus", () => {
+      setHover(true);
+      // A note reached with Tab while zoomed in may be off screen: bring it to the middle.
+      const [x, y] = [node.x * view.k + view.x, node.y * view.k + view.y];
+      if (x < 0 || x > width || y < 0 || y > height) moveTo(view.k, width / 2 - node.x * view.k, height / 2 - node.y * view.k);
+    });
+    node.anchor.addEventListener("blur", () => setHover(false));
+  }
+  svg.append(...nodes.map((node) => node.anchor));
+
+  // Names are placed best-connected first; one that would cover a circle or an earlier name stays hidden until hover or zoom.
+  // shortcut: every name is tested against every circle on each redraw; fine for a few thousand notes, then use a grid.
+  const byDegree = [...nodes].filter((node) => node.text).sort((a, b) => b.degree - a.degree);
+  const view = { k: 1, x: 0, y: 0 }; // screen = layout * k + (x, y)
+  function place() {
+    const X = (node) => node.x * view.k + view.x;
+    const Y = (node) => node.y * view.k + view.y;
+    for (const line of lines) {
+      line.setAttribute("x1", X(line.a).toFixed(1));
+      line.setAttribute("y1", Y(line.a).toFixed(1));
+      line.setAttribute("x2", X(line.b).toFixed(1));
+      line.setAttribute("y2", Y(line.b).toFixed(1));
+    }
+    for (const node of nodes) {
+      for (const circle of node.circles) {
+        circle.setAttribute("cx", X(node).toFixed(1));
+        circle.setAttribute("cy", Y(node).toFixed(1));
+      }
+    }
+    const taken = nodes.map((node) => [X(node) - node.r, Y(node) - node.r, X(node) + node.r, Y(node) + node.r]);
+    for (const node of byDegree) {
+      const x = X(node);
+      // Under the circle if there is room, else above it.
+      const spots = [Y(node) + node.r + 17, Y(node) - node.r - 8].map((y) => ({ y, box: [x - node.half, y - 12, x + node.half, y + 5] }));
+      const free = x < 0 || x > width ? null : spots.find(({ y, box }) => y > 12 && y < height && !taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1]));
+      if (free) taken.push(free.box);
+      node.text.setAttribute("x", x.toFixed(1));
+      node.text.setAttribute("y", (free ?? spots[0]).y.toFixed(1));
+      node.anchor.classList.toggle("quiet", !free);
+    }
+  }
+  function moveTo(k, x, y) {
+    view.k = Math.min(MAX_ZOOM, Math.max(1, k));
+    // The drawing always covers the frame, so there is no way to lose it.
+    view.x = Math.min(0, Math.max(width - width * view.k, x));
+    view.y = Math.min(0, Math.max(height - height * view.k, y));
+    svg.classList.toggle("zoomed", view.k > 1);
+    place();
+    onZoom?.(view.k);
+  }
+  place();
+  if (!onZoom) return svg;
+
+  /** Zooms by a factor around a point of the drawing, keeping that point where it is. */
+  const zoomAt = (factor, px, py) => {
+    const k = Math.min(MAX_ZOOM, Math.max(1, view.k * factor));
+    moveTo(k, px - ((px - view.x) * k) / view.k, py - ((py - view.y) * k) / view.k);
+  };
+  svg.zoom = (factor) => (factor ? zoomAt(factor, width / 2, height / 2) : moveTo(1, 0, 0));
+  /** Pointer position in drawing units. */
+  const point = (event) => {
+    const box = svg.getBoundingClientRect();
+    return [((event.clientX - box.left) * width) / box.width, ((event.clientY - box.top) * height) / box.height];
+  };
+  svg.addEventListener(
+    "wheel",
+    (event) => {
+      // Where the page itself scrolls (phones, narrow windows), leave the wheel alone unless it is a pinch (ctrl).
+      if (!event.ctrlKey && document.documentElement.scrollHeight > window.innerHeight) return;
+      event.preventDefault();
+      zoomAt(Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.002)), ...point(event));
+    },
+    { passive: false },
+  );
+  const pointers = new Map();
+  let dragged = false;
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    if (pointers.size === 0) dragged = false;
+    pointers.set(event.pointerId, point(event));
   });
-  svg.append(...anchors);
+  svg.addEventListener("pointermove", (event) => {
+    const last = pointers.get(event.pointerId);
+    if (!last) return;
+    const now = point(event);
+    if (!dragged && Math.hypot(now[0] - last[0], now[1] - last[1]) < 4) return;
+    if (!dragged) for (const id of pointers.keys()) svg.setPointerCapture(id);
+    dragged = true;
+    pointers.set(event.pointerId, now);
+    if (pointers.size === 1) return moveTo(view.k, view.x + now[0] - last[0], view.y + now[1] - last[1]);
+    // Two fingers: zoom by how much they moved apart, around the point between them.
+    const [other] = [...pointers].filter(([id]) => id !== event.pointerId).map(([, p]) => p);
+    zoomAt(Math.hypot(now[0] - other[0], now[1] - other[1]) / Math.max(1, Math.hypot(last[0] - other[0], last[1] - other[1])), (now[0] + other[0]) / 2, (now[1] + other[1]) / 2);
+  });
+  const release = (event) => pointers.delete(event.pointerId);
+  svg.addEventListener("pointerup", release);
+  svg.addEventListener("pointercancel", release);
+  // A drag that ends on a note must not open it.
+  svg.addEventListener("click", (event) => dragged && (event.preventDefault(), event.stopPropagation(), (dragged = false)), true);
   return svg;
 }
 
@@ -296,6 +396,12 @@ async function showGraph() {
   }
   const { colour, legend } = folderPalette(graph.nodes);
   const slot = h("div", { class: "graph" });
+  const zoomButton = (text, name, factor) => {
+    const button = h("button", { type: "button", "aria-label": name, title: name }, text);
+    button.addEventListener("click", () => main.querySelector(".graph").zoom(factor));
+    return button;
+  };
+  const [zoomIn, zoomOut, reset] = [zoomButton("+", "Zoom in", 1.6), zoomButton("−", "Zoom out", 1 / 1.6), zoomButton("Reset", "Reset zoom", 0)];
   main.replaceChildren(
     h(
       "div",
@@ -305,6 +411,7 @@ async function showGraph() {
         { class: "graph-head" },
         h("h1", {}, "Link graph"),
         h("p", {}, `${plural(graph.nodes.length, "note")}, ${plural(graph.edges.length, "link")}. Select a note to read it.`),
+        h("div", { class: "zoom", role: "group", "aria-label": "Zoom the graph" }, zoomOut, zoomIn, reset),
       ),
       slot,
       legend,
@@ -314,12 +421,19 @@ async function showGraph() {
   const box = slot.getBoundingClientRect();
   slot.replaceWith(
     drawGraph(graph, {
-      width: Math.max(360, Math.round(box.width)),
+      width: Math.max(320, Math.round(box.width)),
       height: Math.max(320, Math.round(box.height)),
       colour,
       label: "Link graph of the vault. Each circle is a note; select one to open it.",
+      // aria-disabled, not disabled: a button that disables itself under the keyboard would drop the focus.
+      onZoom(k) {
+        zoomIn.setAttribute("aria-disabled", k >= MAX_ZOOM);
+        zoomOut.setAttribute("aria-disabled", k <= 1);
+        reset.setAttribute("aria-disabled", k <= 1);
+      },
     }),
   );
+  main.querySelector(".graph").zoom(0);
 }
 
 let resizing;
@@ -384,14 +498,7 @@ async function showNote(path) {
   const local = { nodes: graphCache.nodes.filter((node) => near.has(node.id)), edges: graphCache.edges };
   const parts = [
     h("h2", {}, near.size > 1 ? `Linked notes (${near.size - 1})` : "No links yet"),
-    near.size > 1 &&
-      drawGraph(local, {
-        width: 340,
-        height: 300,
-        focusId: self.id,
-        colour: folderPalette(graphCache.nodes).colour,
-        label: "This note and the notes it is linked with",
-      }),
+    near.size > 1 && h("div", { class: "graph" }),
     h("h2", {}, "Related"),
     related.length
       ? h("ul", {}, related.map((item) => h("li", {}, h("a", { href: noteHref(item.path) }, item.title), h("span", { class: "why" }, item.reasons.join(", ")))))
@@ -401,6 +508,17 @@ async function showNote(path) {
   ];
   side.replaceChildren(...parts.filter(Boolean));
   side.hidden = false;
+  // Drawn at the size it really gets (the column is narrower on a desktop than on a phone), so names stay 12.5px.
+  const slot = side.querySelector(".graph");
+  slot?.replaceWith(
+    drawGraph(local, {
+      width: Math.round(slot.clientWidth),
+      height: Math.round(slot.clientHeight),
+      focusId: self.id,
+      colour: folderPalette(graphCache.nodes).colour,
+      label: "This note and the notes it is linked with",
+    }),
+  );
 }
 
 // ---------- ask ----------
@@ -412,6 +530,7 @@ async function showAnswer(question) {
   side.hidden = true;
   const body = h("div", { class: "body", "aria-live": "polite" }, h("p", {}, "Reading your notes…"));
   main.replaceChildren(h("article", { class: "answer" }, h("h1", {}, question), body));
+  reveal();
   try {
     const result = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
     if (mine !== view) return;
@@ -463,6 +582,14 @@ $("ask").addEventListener("click", () => {
 
 // ---------- start ----------
 
+/** On narrow screens the panes stack and the page scrolls as one document. */
+const stacked = () => getComputedStyle(main).overflowY === "visible";
+/** There, a note or answer opened from the list starts below the fold or above the scroll position: bring it up. */
+function reveal() {
+  const top = main.getBoundingClientRect().top;
+  if (stacked() && (top < 0 || top > window.innerHeight / 3)) main.scrollIntoView();
+}
+
 function route() {
   const match = /^#\/note\/(.+)$/.exec(location.hash);
   let path = null;
@@ -473,7 +600,8 @@ function route() {
   }
   const done = path ? showNote(path) : showGraph();
   done.then(() => {
-    if (document.activeElement !== q) main.focus({ preventScroll: true });
+    if (path) reveal();
+    if (document.activeElement !== q || stacked()) main.focus({ preventScroll: true });
   });
 }
 window.addEventListener("hashchange", route);
@@ -487,5 +615,5 @@ try {
   lastQuery = "";
   route();
 } catch (error) {
-  main.replaceChildren(h("p", { class: "problem" }, `vaultmind could not load: ${error.message}`));
+  main.replaceChildren(h("p", { class: "problem" }, error.message));
 }

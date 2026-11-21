@@ -60,7 +60,6 @@ a {
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 2px;
 }
 .visually-hidden {
   position: absolute;
@@ -88,6 +87,7 @@ mark {
   border-bottom: 1px solid var(--line);
 }
 .brand {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -131,6 +131,12 @@ mark {
 .search input::placeholder {
   color: var(--soft);
   opacity: 1;
+}
+/* The browser's own clear button, toned down to the ink colour instead of system blue. */
+.search input::-webkit-search-cancel-button {
+  filter: grayscale(1);
+  opacity: 0.75;
+  cursor: pointer;
 }
 .search input:focus {
   outline: 0;
@@ -366,6 +372,19 @@ h2 {
   margin: 3rem auto;
   font: 1.1rem/1.5 var(--read);
 }
+/* Only shown when the vault takes a moment to open, so a fast start does not flash it. */
+.loading {
+  color: var(--soft);
+  animation: appear 0s 0.4s backwards;
+}
+.loading:has(+ noscript .problem) {
+  display: none;
+}
+@keyframes appear {
+  from {
+    visibility: hidden;
+  }
+}
 
 /* Answers */
 .answer .body p {
@@ -380,6 +399,9 @@ h2 {
   margin-top: 2rem;
   padding-top: 1rem;
   border-top: 1px solid var(--line);
+}
+.sources h2 {
+  margin-top: 0;
 }
 .sources ol {
   padding-left: 1.4rem;
@@ -450,6 +472,44 @@ h2 {
   cursor: pointer;
   outline: none;
 }
+.graph text {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* The whole-vault graph zooms. One finger still scrolls the page until it is zoomed in; then it pans the graph. */
+#main .graph {
+  touch-action: pan-y;
+}
+#main .graph.zoomed {
+  touch-action: none;
+  cursor: grab;
+}
+.zoom {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+}
+.zoom button {
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0 0.9rem;
+  color: var(--ink);
+  background: transparent;
+  border: 1.5px solid var(--soft);
+}
+@media (hover: hover) {
+  .zoom button:hover {
+    color: var(--paper);
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+}
+.zoom button[aria-disabled="true"] {
+  color: var(--soft);
+  background: transparent;
+  border-color: var(--line);
+  cursor: default;
+}
 .graph a.quiet text {
   display: none;
 }
@@ -509,6 +569,7 @@ h2 {
 
 /* Connections column */
 #side .graph {
+  overflow: visible; /* a long name at the edge may run into the column's padding instead of being cut */
   max-width: 22rem;
   aspect-ratio: 340 / 300;
   margin: 0 0 1.2rem;
@@ -528,16 +589,48 @@ h2 {
   margin-top: 1.6rem;
 }
 
+/* Two columns: the page scrolls as one document, the list stays in view, connections follow the note. */
 @media (max-width: 68rem) {
+  html,
+  body {
+    height: auto;
+  }
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .layout,
   .layout:has(#side:not([hidden])) {
     grid-template-columns: 19rem minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    /* The column rule, drawn on the grid so it runs the full height whatever the panes hold. */
+    background: linear-gradient(var(--line), var(--line)) 19rem 0 / 1px 100% no-repeat;
   }
+  .list {
+    grid-row: 1 / span 2;
+    align-self: start;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-right: 0;
+  }
+  #main,
   #side {
     grid-column: 2;
+    overflow-y: visible;
+  }
+  #side {
     border-left: 0;
+    margin-left: 1px;
     border-top: 1px solid var(--line);
   }
+  .graph-view {
+    height: calc(100vh - 6.5rem);
+    height: calc(100dvh - 6.5rem);
+  }
 }
+/* One column */
 @media (max-width: 46rem) {
   .bar {
     grid-template-columns: auto minmax(0, 1fr);
@@ -548,17 +641,13 @@ h2 {
     grid-column: 1 / -1;
     grid-row: 2;
   }
-  html,
-  body {
-    height: auto;
-  }
   .layout,
   .layout:has(#side:not([hidden])) {
     display: block;
+    background: none;
   }
-  #main,
   #side {
-    overflow-y: visible;
+    margin-left: 0;
   }
   .list,
   #main,
@@ -566,7 +655,7 @@ h2 {
     padding: 1rem 1rem 1.5rem;
   }
   .list {
-    border-right: 0;
+    position: static;
     border-bottom: 1px solid var(--line);
     max-height: 38vh;
     overflow-y: auto;

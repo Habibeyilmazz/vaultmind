@@ -26,11 +26,17 @@
     </header>
     <div class="layout">
       <nav class="list" aria-labelledby="list-title">
-        <h2 id="list-title">Recent notes</h2>
-        <p class="hint" id="list-hint" aria-live="polite"></p>
+        <!-- One live region, read as a whole, so a screen reader hears the result count and not only the hint under it. -->
+        <div aria-live="polite" aria-atomic="true">
+          <h2 id="list-title">Recent notes</h2>
+          <p class="hint" id="list-hint"></p>
+        </div>
         <ol id="list"></ol>
       </nav>
-      <main id="main" tabindex="-1"></main>
+      <main id="main" tabindex="-1">
+        <p class="problem loading">Opening your vault…</p>
+        <noscript><p class="problem">The vaultmind web UI needs JavaScript. The command line and the MCP server work without a browser.</p></noscript>
+      </main>
       <aside id="side" aria-label="Connections of this note" hidden></aside>
     </div>
   </body>
