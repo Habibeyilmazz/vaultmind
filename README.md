@@ -135,7 +135,7 @@ Two things use the network, both optional:
 - The link graph has zoom and pan but no filtering. Names that would collide stay hidden until you zoom in or hover; beyond a few hundred notes the unzoomed view is a dense cloud.
 - Symbolic links inside the vault are not followed, so a linked note or folder is not indexed.
 - Search returns one hit per note (its best section). Each ranking contributes its 100 best sections, at most three per note, so very broad queries are not exhaustive.
-- Developed on macOS. CI runs the unit and MCP tests and the built CLI on Linux (Node 22.18 and 24) and on Windows (Node 22); a manually started workflow runs the real embedding model on Linux, Windows and macOS. The browser tests run on Linux only, so the web UI has not been looked at in a browser on Windows.
+- Developed on macOS. CI runs the unit and MCP tests and the built CLI on Linux (Node 22.18 and 24) and on Windows (Node 22); a manually started workflow runs the real embedding model on Linux, Windows and macOS. The browser tests run on Linux and Windows; nobody has looked at the web UI by eye on Windows.
 - Not published to npm; install from this repository.
 
 ## Compared with other tools
