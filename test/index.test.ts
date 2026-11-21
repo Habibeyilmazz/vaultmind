@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { openDb } from "../src/db.ts";
@@ -24,15 +24,27 @@ test("listNotes skips dot-directories and non-markdown files", () => {
 
 test("indexing is incremental: unchanged files are skipped, edits and deletions are picked up", async () => {
   const { dir, db } = indexed();
-  assert.deepEqual(indexVault(db, dir), { scanned: 13, added: 0, updated: 0, removed: 0 });
+  assert.deepEqual(indexVault(db, dir), { scanned: 13, added: 0, updated: 0, removed: 0, skipped: 0 });
 
   writeFileSync(join(dir, "Inbox.md"), "# Inbox\n\nzebra crossing");
   rmSync(join(dir, "travel/Lisbon Trip.md"));
-  assert.deepEqual(indexVault(db, dir), { scanned: 12, added: 0, updated: 1, removed: 1 });
+  assert.deepEqual(indexVault(db, dir), { scanned: 12, added: 0, updated: 1, removed: 1, skipped: 0 });
   assert.equal(getNote(db, "Lisbon Trip"), undefined);
   assert.equal((await search(db, "zebra")).hits[0].path, "Inbox.md");
   assert.equal((await search(db, "someday")).hits.length, 0, "old Inbox text must leave the keyword index");
   assert.deepEqual(getNote(db, "Espresso Dialing In")!.links, [], "the link to the deleted note is dangling again");
+});
+
+test("an unreadable or oversized file is skipped, the rest is indexed", () => {
+  const dir = tempVault();
+  symlinkSync(join(dir, "does-not-exist.md"), join(dir, "Dangling.md"));
+  writeFileSync(join(dir, "Huge.md"), "x".repeat(5 * 1024 * 1024 + 1));
+  mkdirSync(join(dir, "Folder.md"));
+  const db = openDb(":memory:");
+  const result = indexVault(db, dir);
+  assert.equal(result.added, 13);
+  assert.equal(result.skipped, 1, "the oversized file; the dangling symlink and the folder are not files at all");
+  assert.equal(stats(db).notes, 13);
 });
 
 test("links resolve by file name, alias and heading link; code is ignored; dangling links are kept", () => {

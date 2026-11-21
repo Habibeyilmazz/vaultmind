@@ -82,7 +82,10 @@ export async function main(argv: string[]): Promise<number> {
     if (command === "index") {
       const started = Date.now();
       const changed = vault.sync()!;
-      err(`Scanned ${changed.scanned} notes: ${changed.added} added, ${changed.updated} updated, ${changed.removed} removed.`);
+      err(
+        `Scanned ${changed.scanned} notes: ${changed.added} added, ${changed.updated} updated, ${changed.removed} removed` +
+          (changed.skipped ? `, ${changed.skipped} skipped (unreadable or over 5 MB).` : "."),
+      );
       const embedded = await vault.embedPending((done, total) => {
         if (process.stderr.isTTY) process.stderr.write(`\rEmbedding ${done}/${total}`);
       });
@@ -119,7 +122,7 @@ export async function main(argv: string[]): Promise<number> {
         else {
           const color = process.stdout.isTTY;
           for (const hit of result.hits) {
-            const snippet = hit.snippet.replace(/\s+/g, " ").replaceAll(HL_START, color ? "\x1b[1m" : "").replaceAll(HL_END, color ? "\x1b[0m" : "");
+            const snippet = hit.snippet.replaceAll(HL_START, color ? "\x1b[1m" : "").replaceAll(HL_END, color ? "\x1b[0m" : "");
             console.log(`${hit.title}  (${hit.path}:${hit.line})\n  ${hit.heading ? `${hit.heading}: ` : ""}${snippet}\n`);
           }
           console.log(`${result.total} note${result.total === 1 ? "" : "s"} (${result.mode} search)`);

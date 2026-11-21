@@ -12,9 +12,13 @@ export interface IndexStats {
   added: number;
   updated: number;
   removed: number;
+  /** Files that could not be read, or are larger than MAX_NOTE_BYTES. */
+  skipped: number;
 }
 
 const SKIP_DIRS = new Set(["node_modules"]);
+/** Larger files are almost always pasted binary data, not notes. */
+const MAX_NOTE_BYTES = 5 * 1024 * 1024;
 
 /** All .md files under dir as vault-relative POSIX paths. Dot-directories (.obsidian, .git, .trash) are skipped. */
 export function listNotes(dir: string): string[] {
@@ -71,7 +75,7 @@ function deleteNote(db: Db, id: number): void {
 
 /** Brings the keyword index in line with the files on disk. Only new or changed files are re-read. */
 export function indexVault(db: Db, dir: string): IndexStats {
-  const stats: IndexStats = { scanned: 0, added: 0, updated: 0, removed: 0 };
+  const stats: IndexStats = { scanned: 0, added: 0, updated: 0, removed: 0, skipped: 0 };
   const known = new Map(
     (db.prepare("SELECT id, path, mtime, size, hash FROM notes").all() as { id: number; path: string; mtime: number; size: number; hash: string }[]).map(
       (row) => [row.path, row],
@@ -87,12 +91,21 @@ export function indexVault(db: Db, dir: string): IndexStats {
     for (const path of listNotes(dir)) {
       stats.scanned++;
       const full = join(dir, path);
-      const stat = statSync(full);
-      const mtime = Math.round(stat.mtimeMs);
       const old = known.get(path);
       known.delete(path);
-      if (old && old.mtime === mtime && old.size === stat.size) continue;
-      const raw = readFileSync(full, "utf8");
+      let stat: ReturnType<typeof statSync>;
+      let raw: string;
+      try {
+        stat = statSync(full);
+        if (stat.size > MAX_NOTE_BYTES) throw new Error("too large");
+        if (old && old.mtime === Math.round(stat.mtimeMs) && old.size === stat.size) continue;
+        raw = readFileSync(full, "utf8");
+      } catch {
+        // One unreadable file must not stop the rest of the vault from being indexed.
+        stats.skipped++;
+        continue;
+      }
+      const mtime = Math.round(stat.mtimeMs);
       const hash = createHash("sha1").update(raw).digest("hex");
       if (old && old.hash === hash) {
         db.prepare("UPDATE notes SET mtime = ?, size = ? WHERE id = ?").run(mtime, stat.size, old.id);

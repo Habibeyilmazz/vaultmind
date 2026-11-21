@@ -144,8 +144,12 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
       title: row.title,
       heading: row.heading,
       line: row.line,
-      // Wikilink brackets are noise in a one-line excerpt.
-      snippet: (entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text)).replace(/\[\[|\]\]/g, ""),
+      // Wikilink brackets and table rules are noise in a short excerpt.
+      snippet: (entry.snippet ?? (row.text.length > 220 ? `${row.text.slice(0, 220)}…` : row.text))
+        .replace(/\[\[|\]\]/g, "")
+        .replace(/\||-{3,}/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
       text: row.text,
       tags: tagsOf(db, row.noteId),
       score: entry.score,
