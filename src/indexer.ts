@@ -61,19 +61,21 @@ export function buildResolver(db: Db): (name: string, from?: string) => number |
     title: string;
     aliases: string;
   }[];
+  // macOS names files with combining accents; people type precomposed ones. Compare both as NFC.
+  const fold = (text: string) => text.normalize("NFC").toLowerCase();
   const put = (map: Map<string, number>, key: string, id: number) => {
     if (!map.has(key)) map.set(key, id);
   };
   for (const row of rows) {
-    const noExt = row.path.replace(/\.md$/i, "").toLowerCase();
+    const noExt = fold(row.path.replace(/\.md$/i, ""));
     put(byPath, noExt, row.id);
     put(byName, noExt.split("/").pop()!, row.id);
-    for (const alias of JSON.parse(row.aliases) as string[]) put(byAlias, alias.toLowerCase(), row.id);
+    for (const alias of JSON.parse(row.aliases) as string[]) put(byAlias, fold(alias), row.id);
   }
-  for (const row of rows) put(byAlias, row.title.toLowerCase(), row.id);
+  for (const row of rows) put(byAlias, fold(row.title), row.id);
   return (name, from) => {
-    const key = name.trim().replace(/\.md$/i, "").replace(/^\.?\//, "").toLowerCase();
-    const sibling = from === undefined ? undefined : byPath.get(posix.join(posix.dirname(from.toLowerCase()), key));
+    const key = fold(name.trim().replace(/\.md$/i, "").replace(/^\.?\//, ""));
+    const sibling = from === undefined ? undefined : byPath.get(posix.join(posix.dirname(fold(from)), key));
     return sibling ?? byPath.get(key) ?? byName.get(key.split("/").pop()!) ?? byAlias.get(key);
   };
 }

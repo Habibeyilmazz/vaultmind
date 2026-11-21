@@ -316,3 +316,15 @@ test("a long excerpt is never cut through an emoji", async () => {
   assert.equal(hits.length, 1);
   assert.doesNotMatch(hits[0].snippet, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
 });
+
+test("a link written with a precomposed é finds a note whose name uses a combining accent, and the reverse", () => {
+  const dir = tempVault();
+  writeFileSync(join(dir, "café.md"), "# Decomposed\nbody");
+  writeFileSync(join(dir, "Linker.md"), "see [[café]] and [[Naïve]]");
+  writeFileSync(join(dir, "naïve.md"), "# Naive");
+  const db = openDb(":memory:");
+  indexVault(db, dir);
+  const note = getNote(db, "Linker");
+  assert.deepEqual(note?.links.map((l) => l.title).sort(), ["Decomposed", "Naive"]);
+  assert.equal(getNote(db, "café")?.title, "Decomposed");
+});

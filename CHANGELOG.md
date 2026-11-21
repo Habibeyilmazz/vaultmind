@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Reliability pass (2026-11-22)
+
+Tried to break the tool with hostile, odd and concurrent input; every bug below has a test that failed first.
+
+- Fixed: `marked` took quadratic to cubic time on blocks with thousands of `*`, `_` or `~` (`*a_` x 8000: 6 s), and 20 000 nested `>` or `- ` overflowed its stack, which the web server answered with "Bad request". A block with over 2000 such characters now shows them literally, and a render failure falls back to the note as plain text. The known gap about `*a` runs is closed.
+- Fixed: several processes opening a brand-new index together (for example `serve` and the MCP server started at once) could fail with "database is locked". The WAL switch is retried and the schema is built under the write lock.
+- Fixed: one folder that cannot be read (permissions, a sync client) made every command fail; it is now skipped. An unreadable vault root still fails.
+- Fixed: frontmatter `tags` or `aliases` holding `null`, `true`, a map or a nested list produced tags called `null` and `[object object]`; a numeric `title:` was ignored.
+- Fixed: links match across Unicode forms, so `[[café]]` finds a file whose name uses a combining accent (how macOS can store names).
+- Fixed: MCP `get_note` pages and search excerpts no longer cut an emoji in half (the half became a replacement character).
+- Checked, no bug found: CLI with missing, empty or invalid arguments, an empty vault, 30 odd search strings (quotes, FTS operators, NUL, emoji, CJK), BOM, CRLF, invalid UTF-8, broken frontmatter, notes in a folder named `x.md`, self links.
+- Tests: 55 unit/MCP tests, 14 browser tests (all pass). Not done: the web UI on Windows, `ask` against the live API, retaking README screenshots (nothing visual changed).
+
 ### Filter by tag and folder (2026-11-22)
 
 Used the product as a newcomer for the "feature" round. The thing most missed: no way to say "only my project notes" or "only this folder", in the web UI, the CLI or the MCP tools. It was also first on the roadmap.
@@ -14,7 +27,7 @@ Used the product as a newcomer for the "feature" round. The thing most missed: n
 - Added: tags in a note's header are buttons; one click lists every note with that tag through the search box.
 - The filter is applied inside both rankings (keyword SQL and the vector scan), not to the top 100 afterwards, so a filtered search is never short of results that exist.
 - Fixed: a note with a long run of `[a](`, `[a](<` or `![a](` took quadratic time to render in the web UI (the new regression test took 12 s before the fix, 0.4 s after). The cause was our own wikilink extension's `start()` (it searched the rest of the paragraph once per `[`), not `marked`; removing it makes those inputs linear. Regression test.
-- Known gap, found while checking that fix: `marked` itself is quadratic on a long run of `*a` (128 KB: about 2 s). Web view only.
+- Known gap, found while checking that fix: `marked` itself is quadratic on a long run of `*a` (fixed in the reliability pass above).
 - Tests: 48 unit/MCP tests (4 new), 14 browser tests (1 new). README screenshots not retaken: the tag buttons look the same as before until hovered.
 
 ### Security pass (2026-11-22)
