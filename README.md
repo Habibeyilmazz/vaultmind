@@ -119,6 +119,8 @@ vaultmind ask <question>     Answer from your notes with citations (needs ANTHRO
 
 Run it as `node dist/cli.js ...`, or `npm link` once to get a `vaultmind` command.
 
+In a terminal, `search` prints titles and matched words in bold; piped, or with `NO_COLOR` set, it prints plain text.
+
 ## Privacy
 
 Indexing, search, the MCP server and the web UI run entirely on your machine. The web UI listens on `127.0.0.1` only, refuses requests addressed to other host names, and never loads remote images from notes.

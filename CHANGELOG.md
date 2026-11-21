@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Design and UX pass (2026-11-22)
+
+Looked at the running web UI in Chromium at 1360, 900 and 390 px, light and dark: home graph, search, empty results, a note, a missing note, keyboard focus, touch target sizes. The layout, type, colours, focus rings and reduced-motion handling held up; nothing was restyled. What was wrong was state, plus two items from the last round's gaps.
+
+- Fixed: opening a note downloaded the whole-vault link graph to draw its few neighbours. `/api/graph?path=<note>` now returns only the note, the notes it links with and the links among them, plus per-folder note counts so the colours match the big graph (`folders` is also on the whole graph now). Test. Not re-measured on the 10,000-note vault.
+- Fixed: the flaky "watched vault re-indexes on its own" test was a real bug. On macOS, changes in the moment after `fs.watch()` returns are not reported (longer on a busy machine), so a note written right after `serve` or `mcp` started stayed unfindable for up to 30 s. The watcher now rescans once about a second after it starts. Before: 15 of 24 parallel runs of that test failed; after: 0 of 24, and 5 sequential full runs passed.
+- Fixed: a filter-only search (`tag:baking`) switched the header from "hybrid search" to "keyword search" even with the model loaded, because a filter listing always reports keyword mode. Browser test.
+- Fixed: opening a note that does not exist left the previous note highlighted in the list and in the tab title. Browser test.
+- Changed: `vaultmind search` in a terminal prints titles in bold and locations dimmed, and honours `NO_COLOR`. Piped output is unchanged.
+- Checked, no change: README screenshots regenerated with `scripts/screenshots.ts` came out byte-identical (nothing visual changed), so the files did not change. Tag buttons and the related-notes links are 20-21 px tall at 390 px, under 24 px but spaced far enough apart for WCAG 2.2's target-size exception. The README has the demo GIF at the top; no separate hero image was made.
+- Still not done: `ask` against the live API; the web UI looked at by eye on Windows.
+
 ### First-run review (2026-11-22)
 
 Cloned the repository fresh into a separate folder and followed the README quickstart word for word (macOS, Node 22.23, npm 12.2): `npm install` (3 s, the install-script warning appears as the README says), `npm run build`, `index` (model downloaded, 44/44 sections embedded, 4.2 s), `search`, `serve` on 4100 (looked at in Chromium: home graph, search, note view, no console errors), `mcp` over stdio (initialize, tools/list, search_notes), and `ask` without a key (clear error, exit 1).
