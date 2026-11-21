@@ -46,7 +46,7 @@ test("home shows the whole link graph and recent notes", async () => {
   await page.waitForSelector("#main .graph circle");
   assert.equal(await page.textContent("#status"), `${vault.dir.split("/").pop()}: 14 notes, keyword search`);
   assert.equal(await page.locator("#main .graph circle").count(), 14);
-  assert.equal(await page.locator(".legend li").count(), 5);
+  assert.deepEqual(await page.locator(".legend li").allTextContents(), ["health", "kitchen", "projects", "reading", "travel", "everything else"]);
   assert.equal(await page.locator("#list li").count(), 14);
   assert.equal(await page.isHidden("#ask"), true, "Ask stays hidden without an API key");
   // Every circle is inside the drawing.

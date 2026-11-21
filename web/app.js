@@ -199,14 +199,21 @@ function layout(nodes, edges, width, height) {
   }
 }
 
-/** One colour per top-level folder, stable for the whole vault so the small and the large graph agree. */
+/**
+ * A colour for each of the six largest top-level folders; everything else shares grey.
+ * Computed over the whole vault so the small and the large graph agree.
+ */
 function folderPalette(nodes) {
-  const folders = [...new Set(nodes.map((node) => folderOf(node.path)))].filter(Boolean).sort();
-  const colour = (path) => `f${folderOf(path) ? (folders.indexOf(folderOf(path)) % 6) + 1 : 0}`;
+  const sizes = new Map();
+  for (const node of nodes) sizes.set(folderOf(node.path), (sizes.get(folderOf(node.path)) ?? 0) + 1);
+  const named = [...sizes.keys()].filter(Boolean).sort((a, b) => sizes.get(b) - sizes.get(a) || a.localeCompare(b)).slice(0, 6).sort();
+  const colour = (path) => `f${named.indexOf(folderOf(path)) + 1}`;
+  const dot = (cls) => s("svg", { viewBox: "0 0 10 10", "aria-hidden": "true" }, s("circle", { cx: 5, cy: 5, r: 5, class: cls }));
   const legend = h(
     "ul",
     { class: "legend", "aria-label": "Folder colours" },
-    folders.slice(0, 12).map((folder) => h("li", {}, s("svg", { viewBox: "0 0 10 10", "aria-hidden": "true" }, s("circle", { cx: 5, cy: 5, r: 5, class: colour(`${folder}/`) })), folder)),
+    named.map((folder, i) => h("li", {}, dot(`f${i + 1}`), folder)),
+    named.length < sizes.size && h("li", {}, dot("f0"), named.length ? "everything else" : "notes"),
   );
   return { colour, legend };
 }
@@ -223,23 +230,25 @@ function drawGraph(graph, { width, height, focusId, label, colour }) {
     neighbours.get(edge.target).add(edge.source);
   }
   const quiet = nodes.length > 60; // too many labels to read: show them on hover only
+  const shrink = Math.max(0.35, Math.min(1, Math.sqrt(150 / nodes.length))); // smaller circles in crowded graphs
+  const radius = (degree) => (6 + Math.min(Math.sqrt(degree) * 2.6, 12)) * shrink;
 
   const lines = edges.map((edge) => {
     const a = byId.get(edge.source);
     const b = byId.get(edge.target);
     return Object.assign(s("line", { x1: a.x.toFixed(1), y1: a.y.toFixed(1), x2: b.x.toFixed(1), y2: b.y.toFixed(1) }), { edge });
   });
-  const svg = s("svg", { class: "graph", viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": label }, lines);
+  const svg = s("svg", { class: quiet ? "graph dense" : "graph", viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": label }, lines);
   const anchors = nodes.map((node) => {
     const degree = neighbours.get(node.id).size - 1;
     const anchor = s(
       "a",
       { href: noteHref(node.path), class: [node.id === focusId ? "focus" : "", quiet && node.id !== focusId ? "quiet" : ""].join(" ").trim() || null },
       s("title", {}, `${node.title} (${plural(degree, "link")})`),
-      s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: (6 + Math.min(Math.sqrt(degree) * 2.6, 12)).toFixed(1), class: colour(node.path) }),
+      s("circle", { cx: node.x.toFixed(1), cy: node.y.toFixed(1), r: radius(degree).toFixed(1), class: colour(node.path) }),
       // The focused note needs no label: its title is the page heading.
       node.id !== focusId &&
-        s("text", { x: node.x.toFixed(1), y: (node.y + 26 + Math.min(Math.sqrt(degree) * 2.6, 12)).toFixed(1) }, node.title.length > 26 ? `${node.title.slice(0, 25)}…` : node.title),
+        s("text", { x: node.x.toFixed(1), y: (node.y + radius(degree) + 20).toFixed(1) }, node.title.length > 26 ? `${node.title.slice(0, 25)}…` : node.title),
     );
     const near = neighbours.get(node.id);
     const setHover = (on) => {

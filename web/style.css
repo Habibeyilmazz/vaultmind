@@ -427,6 +427,12 @@ h2 {
   stroke: var(--paper);
   stroke-width: 2;
 }
+.graph.dense circle {
+  stroke-width: 1;
+}
+.graph.dense line {
+  stroke-width: 0.7;
+}
 .graph text {
   font: 500 12.5px var(--ui);
   fill: var(--ink);
