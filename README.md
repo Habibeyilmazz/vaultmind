@@ -3,6 +3,8 @@
 Local-first search and an MCP server for a folder of Markdown notes (an Obsidian vault works as is).
 It indexes your notes into one SQLite file, searches them by keyword and by meaning with a small model that runs on your machine, and lets Claude use the vault as memory. No account, no API key.
 
+![Typing a question, opening a result: the note, its linked notes and related notes (recorded from the running app on the example vault)](docs/demo.gif)
+
 ![The link graph of the example vault](docs/screenshots/graph.png)
 
 ![Search results, a note, and its connections](docs/screenshots/note.png)
@@ -136,6 +138,16 @@ Two things use the network, both optional:
 - Developed on macOS. CI runs the unit and MCP tests and the built CLI on Linux (Node 22.18 and 24) and on Windows (Node 22); a manually started workflow runs the real embedding model on Linux, Windows and macOS. The browser tests run on Linux only, so the web UI has not been looked at in a browser on Windows.
 - Not published to npm; install from this repository.
 
+## Compared with other tools
+
+- **Obsidian's built-in search** is faster to reach and has richer operators, but matches words, not meaning, and Claude cannot use it. Keep using it; vaultmind adds meaning-based search and an MCP door.
+- **Obsidian plugins with semantic search or chat** live inside the app and may offer more polish and editing integration. Prefer them if you only work inside Obsidian. vaultmind is a standalone process that also serves Claude Code and Claude Desktop, and needs Node.
+- **Generic Markdown or filesystem MCP servers** read files by path or grep them. They are simpler to set up; vaultmind is worth it when your notes are many enough that you want ranked, section-level answers, tags and backlinks.
+- **Hosted note and chat products** (cloud AI notebooks) do more, including other file types and sync, but your notes go to their servers. vaultmind keeps everything on your machine and handles Markdown only.
+- **A DIY script** (embed files, store vectors, query) is a fine weekend project. vaultmind is that plus parsing of Obsidian syntax, incremental indexing, a UI and tests.
+
+I have not benchmarked vaultmind against any of these, so no claim here is about quality or speed.
+
 ## Roadmap
 
 - File watching instead of the 30-second rescan
@@ -144,12 +156,16 @@ Two things use the network, both optional:
 - Publish to npm so `npx vaultmind` works
 - A vector index for vaults far beyond 50,000 sections
 
+## Contributing
+
+Bug reports and small, focused pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md); please keep notes out of issues, the example vault is enough to reproduce most things.
+
 ## Development
 
 ```bash
 npm run typecheck
 npm test              # parser, index, search, web API, ask (stubbed and against a local stand-in), MCP over stdio
-npm run e2e           # drives the web UI in Chromium; run `npx playwright install chromium` once
+npm run e2e           # drives the web UI in Chromium; run `npx playwright install chromium` once; `node scripts/demo.ts` re-records the demo GIF (needs ffmpeg)
 ```
 
 `evals/example-vault.xml` holds ten question/answer pairs for the MCP server over the example vault, in the mcp-builder evaluation format. The answers were checked by hand; the set has not been run through an LLM harness yet.

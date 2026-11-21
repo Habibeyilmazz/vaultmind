@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Launch polish (2026-11-22)
+
+- Added: `docs/demo.gif`, recorded from the running app on the example vault by `scripts/demo.ts` (needs ffmpeg), at the top of the README.
+- Added: README section comparing vaultmind with Obsidian search, Obsidian plugins, plain filesystem MCP servers, hosted products and a DIY script, with no benchmark claims; Contributing section.
+- Added: `CONTRIBUTING.md`, bug and feature issue templates.
+- Checked: `npm test` passed 3 times in a row locally (55 tests), CI green on main; the timing tests were not flaky here. Still not done: `ask` against the live API, the web UI on Windows.
+
 ### Reliability pass (2026-11-22)
 
 Tried to break the tool with hostile, odd and concurrent input; every bug below has a test that failed first.
