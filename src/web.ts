@@ -5,7 +5,7 @@ import { basename } from "node:path";
 import { ask, AskError, askAvailable } from "./ask.ts";
 import { VERSION } from "./mcp.ts";
 import { renderNote } from "./render.ts";
-import { getNote, linkGraph, recentNotes, relatedNotes, search, stats } from "./search.ts";
+import { getNote, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "./search.ts";
 import type { Vault } from "./vault.ts";
 
 const WEB_DIR = new URL("../web/", import.meta.url);
@@ -83,7 +83,9 @@ export async function handle(vault: Vault, request: Request): Promise<Response> 
       const q = param("q");
       if (q.length > 500) return fail(400, "q must be at most 500 characters.");
       if (!q) return json({ mode: "keyword", total: 0, hits: [] });
-      const result = await search(db, q, { limit: boundedInt(url.searchParams.get("limit"), 20, 50) || 20, prefix: true, embedder: await vault.queryEmbedder() });
+      const { text, filter } = parseQuery(q);
+      const limit = boundedInt(url.searchParams.get("limit"), 20, 50) || 20;
+      const result = await search(db, text, { limit, filter, prefix: true, embedder: await vault.queryEmbedder() });
       return json({ ...result, hits: result.hits.map(({ text: _text, ...hit }) => hit) });
     }
     case "/api/recent":

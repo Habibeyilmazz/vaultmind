@@ -3,7 +3,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { ask } from "./ask.ts";
 import { createServer, VERSION } from "./mcp.ts";
 import type { SearchMode } from "./search.ts";
-import { HL_END, HL_START, search, stats } from "./search.ts";
+import { HL_END, HL_START, parseQuery, search, stats } from "./search.ts";
 import { Vault } from "./vault.ts";
 import { startWeb } from "./web.ts";
 
@@ -13,7 +13,8 @@ Usage: vaultmind <command> [options]
 
 Commands:
   index              Build or update the index (only changed notes are re-read)
-  search <query>     Search from the terminal
+  search <query>     Search from the terminal. Narrow it with tag:<tag> and path:<folder>,
+                     e.g. vaultmind search "tag:project path:work deadline"
   serve              Start the local web UI (search, related notes, link graph)
   mcp                Run the MCP server on stdio, for Claude Code / Claude Desktop
   ask <question>     Answer a question from your notes with citations (needs ANTHROPIC_API_KEY)
@@ -112,7 +113,9 @@ export async function main(argv: string[]): Promise<number> {
           for (const source of result.sources) console.log(`\n[${source.n}] ${source.title} (${source.path}:${source.line})\n    "${source.quotes[0]?.trim()}"`);
         }
       } else {
-        const result = await search(vault.db, text, {
+        const { text: words, filter } = parseQuery(text);
+        const result = await search(vault.db, words, {
+          filter,
           mode: values.mode as SearchMode,
           limit: integer(values.limit, "limit", 1, 100),
           embedder: await vault.queryEmbedder(),
@@ -124,7 +127,8 @@ export async function main(argv: string[]): Promise<number> {
             const snippet = hit.snippet.replaceAll(HL_START, color ? "\x1b[1m" : "").replaceAll(HL_END, color ? "\x1b[0m" : "");
             console.log(`${hit.title}  (${hit.path}:${hit.line})\n  ${hit.heading ? `${hit.heading}: ` : ""}${snippet}\n`);
           }
-          console.log(`${result.total} note${result.total === 1 ? "" : "s"} (${result.mode} search)`);
+          if (result.inScope === 0) console.log("No note has that tag or is in that folder.");
+          else console.log(`${result.total} note${result.total === 1 ? "" : "s"} (${result.mode} search)`);
         }
       }
       vault.close();

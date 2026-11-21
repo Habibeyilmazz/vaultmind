@@ -60,6 +60,10 @@ test("web API: status, search, note, related, recent, graph", async () => {
   assert.equal(found.data.hits[0].text, undefined, "full section text is not sent to the list");
   assert.deepEqual((await get(vault, "/api/search?q=")).data.hits, []);
   assert.equal((await get(vault, `/api/search?q=${"x".repeat(501)}`)).response.status, 400);
+  const folder = await get(vault, `/api/search?q=${encodeURIComponent("path:reading sleep")}`);
+  assert.ok(folder.data.hits.length > 0 && folder.data.hits.every((hit: { path: string }) => hit.path.startsWith("reading/")));
+  assert.deepEqual((await get(vault, "/api/search?q=tag%3Abaking")).data.hits.map((hit: { title: string }) => hit.title).sort(), ["Sourdough Starter", "Weekend Loaf"]);
+  assert.equal((await get(vault, "/api/search?q=tag%3Anope")).data.inScope, 0);
 
   const note = await get(vault, `/api/note?path=${encodeURIComponent("kitchen/Weekend Loaf.md")}`);
   assert.equal(note.data.title, "Weekend Loaf");

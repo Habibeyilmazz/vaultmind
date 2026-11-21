@@ -228,6 +228,23 @@ test("search as you type, open with Enter, follow links", async () => {
   await page.close();
 });
 
+test("a tag in a note lists every note with it; tag: and path: narrow a search", async () => {
+  const page = await open("#/note/kitchen%2FSourdough%20Starter.md");
+  await page.click(".note .meta button.tag >> text=#baking");
+  await page.waitForFunction(() => document.querySelector("#list-title")?.textContent === "2 notes for “tag:baking”");
+  assert.equal(await page.inputValue("#q"), "tag:baking");
+  assert.equal(await page.textContent("#list-hint"), "Newest first");
+  assert.deepEqual((await page.locator("#list .title").allTextContents()).sort(), ["Sourdough Starter", "Weekend Loaf"]);
+  assert.equal(await page.evaluate(() => document.activeElement?.closest("li")?.matches("#list li:first-child")), true, "focus moves to the list");
+
+  await page.fill("#q", "path:reading sleep");
+  await page.waitForFunction(() => document.querySelector("#list-title")?.textContent?.includes("path:reading sleep"));
+  assert.ok((await page.locator("#list .where").allTextContents()).every((where) => where.startsWith("reading/")));
+  await page.fill("#q", "tag:nosuchtag");
+  await page.waitForFunction(() => document.querySelector("#list-hint")?.textContent === "No note has that tag or is in that folder.");
+  await page.close();
+});
+
 test("missing links and unknown notes are explained", async () => {
   const page = await open("#/note/Inbox.md");
   await page.waitForSelector(".note h1");

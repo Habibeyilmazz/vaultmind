@@ -97,9 +97,16 @@ async function runSearch() {
       status.semantic = result.mode === "hybrid";
       showStatus();
     }
+    const filterOnly = !/[\p{L}\p{N}]/u.test(query.replace(/(^|\s)(tag|path):("[^"]*"|\S+)/gi, " "));
     renderList(
       `${plural(result.total, "note")} for “${query}”`,
-      result.total === 0 ? "Nothing matches. Try fewer or different words." : `${result.mode} search, best section per note`,
+      result.inScope === 0
+        ? "No note has that tag or is in that folder."
+        : result.total === 0
+          ? "Nothing matches. Try fewer or different words."
+          : filterOnly
+            ? "Newest first"
+            : `${result.mode} search, best section per note`,
       result.hits.map((hit) => {
         const section = hit.heading.startsWith(`${hit.title} > `) ? hit.heading.slice(hit.title.length + 3) : hit.heading === hit.title ? "" : hit.heading;
         return { ...hit, where: section ? `${hit.path}, ${section}` : hit.path };
@@ -481,7 +488,7 @@ async function showNote(path) {
         { class: "meta" },
         h("span", {}, note.path),
         h("span", {}, `Edited ${dateText(note.modified)}`),
-        note.tags.map((tag) => h("span", { class: "tag" }, `#${tag}`)),
+        note.tags.map((tag) => h("button", { type: "button", class: "tag", "data-tag": tag, title: `Show every note tagged #${tag}` }, `#${tag}`)),
       ),
       body,
     ),
@@ -520,6 +527,15 @@ async function showNote(path) {
     }),
   );
 }
+
+/** A tag in a note's header lists every note with that tag, through the search box so the filter stays visible. */
+main.addEventListener("click", (event) => {
+  const tag = event.target.closest?.("button.tag")?.dataset.tag;
+  if (!tag) return;
+  q.value = `tag:${tag}`;
+  clearTimeout(debounce);
+  runSearch().then(() => list.querySelector("a")?.focus());
+});
 
 // ---------- ask ----------
 
