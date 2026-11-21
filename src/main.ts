@@ -119,10 +119,12 @@ export async function main(argv: string[]): Promise<number> {
         });
         if (values.json) console.log(JSON.stringify(result, null, 2));
         else {
-          const color = process.stdout.isTTY;
+          // Bold titles and matches, dim locations; plain text when piped or when NO_COLOR is set (no-color.org).
+          const color = process.stdout.isTTY && !process.env.NO_COLOR;
+          const sgr = (code: string, text: string) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
           for (const hit of result.hits) {
-            const snippet = hit.snippet.replaceAll(HL_START, color ? "\x1b[1m" : "").replaceAll(HL_END, color ? "\x1b[0m" : "");
-            console.log(`${hit.title}  (${hit.path}:${hit.line})\n  ${hit.heading ? `${hit.heading}: ` : ""}${snippet}\n`);
+            const snippet = hit.snippet.replaceAll(HL_START, color ? "\x1b[1m" : "").replaceAll(HL_END, color ? "\x1b[22m" : "");
+            console.log(`${sgr("1", hit.title)}  ${sgr("2", `(${hit.path}:${hit.line})`)}\n  ${hit.heading ? sgr("2", `${hit.heading}: `) : ""}${snippet}\n`);
           }
           if (result.inScope === 0) console.log("No note has that tag or is in that folder.");
           else console.log(`${result.total} note${result.total === 1 ? "" : "s"} (${result.mode} search)`);
