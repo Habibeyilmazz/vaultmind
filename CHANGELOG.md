@@ -5,6 +5,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Performance and accessibility pass (2026-11-22)
+
+Measured on a generated vault of 10,000 notes (50,000 sections, 150,000 links, 78 MB of Markdown; Apple M3 Pro, keyword mode) before changing anything.
+
+- Fixed: the web UI's home page (the link graph) did not finish drawing within two minutes on 10,000 notes, because the layout is quadratic. It now draws the 400 best-connected notes and says so ("The 400 best-connected of 10,300 notes. Search for the others."); the page is ready in 0.3 s. Small vaults are unchanged. Browser test with 1,500 notes.
+- Fixed: opening a note in the web UI built the whole-vault link resolver once per wikilink: 260 ms, now 28 ms.
+- Fixed: search computed its highlighted excerpt for every matching section before ranking. A query matching every section took 590 ms through the web API, now 250 ms (the excerpt costs about 7 ms a row and is now made only for the 20 rows returned); related notes 600 ms, now 90 ms. Queries that match few sections were already fast.
+- Changed: `vaultmind search` and `index` no longer load the MCP and Anthropic SDKs: 150 ms, now 50 ms (bare `node` is 37 ms). `mcp`, `serve` and `ask` load them as before (`VERSION` moved to `src/vault.ts`).
+- Changed: CI runs the browser tests on Windows as well as Linux. This closes the "web UI never opened on Windows" gap only if that job passes; see the CI history.
+- Measured, no change needed: index of 10,000 notes 3.1 s, re-index with nothing changed 0.1 s (0.28 s with process start), index file 176 MB keyword-only, `tag:` filter query 35 ms. axe-core 4 (WCAG 2.2 AA and best practices) found no violation on the home, note and search views, light and dark, at 1360 and 390 px. The web assets are 28 KB (app.js) and 13 KB (style.css) uncompressed and the server does not compress them; on localhost that does not matter.
+- Known, not fixed: opening a note downloads the whole-vault graph (5 MB on 10,000 notes, about 0.4 s end to end) because the connections panel is cut from it in the browser; a per-note endpoint would fix it. Embedding and the vector scan were not re-measured on this vault.
+- Deleted nothing: no unused dependency or dead code found (the only unreferenced exports are types).
+- Environment note for the next agent: the shared scratchpad directory is also written by other agents; keep generated vaults in a uniquely named subfolder.
+
 ### Watch the vault (2026-11-22)
 
 Used the product as an MCP memory: a note written while `serve` or `mcp` was running stayed unfindable for up to 30 seconds (checked: a new note was missing from `/api/search` one second after it was written). First item on the roadmap.
