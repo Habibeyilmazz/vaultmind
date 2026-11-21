@@ -240,6 +240,18 @@ function folderPalette(nodes) {
 }
 
 const MAX_ZOOM = 8;
+// The layout is O(n^2) per step: 10,000 notes froze the page for over two minutes, 400 take well under a second.
+const MAX_DRAWN = 400;
+
+/** The best-connected notes of a big graph (all of a small one), with the edges between them. */
+function busiest(graph) {
+  if (graph.nodes.length <= MAX_DRAWN) return graph;
+  const degree = new Map();
+  for (const { source, target } of graph.edges) for (const id of [source, target]) degree.set(id, (degree.get(id) ?? 0) + 1);
+  const nodes = [...graph.nodes].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.path.localeCompare(b.path)).slice(0, MAX_DRAWN);
+  const ids = new Set(nodes.map((node) => node.id));
+  return { nodes, edges: graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) };
+}
 const ruler = document.createElement("canvas").getContext("2d"); // measures note names before they are on the page
 
 /**
@@ -401,6 +413,7 @@ async function showGraph() {
     main.replaceChildren(h("p", { class: "problem" }, "This vault has no Markdown notes yet. Add a .md file, then reload."));
     return;
   }
+  const shown = busiest(graph);
   const { colour, legend } = folderPalette(graph.nodes);
   const slot = h("div", { class: "graph" });
   const zoomButton = (text, name, factor) => {
@@ -417,7 +430,13 @@ async function showGraph() {
         "div",
         { class: "graph-head" },
         h("h1", {}, "Link graph"),
-        h("p", {}, `${plural(graph.nodes.length, "note")}, ${plural(graph.edges.length, "link")}. Select a note to read it.`),
+        h(
+          "p",
+          {},
+          shown === graph
+            ? `${plural(graph.nodes.length, "note")}, ${plural(graph.edges.length, "link")}. Select a note to read it.`
+            : `The ${MAX_DRAWN} best-connected of ${graph.nodes.length.toLocaleString("en")} notes. Search for the others.`,
+        ),
         h("div", { class: "zoom", role: "group", "aria-label": "Zoom the graph" }, zoomOut, zoomIn, reset),
       ),
       slot,
@@ -427,7 +446,7 @@ async function showGraph() {
   // Lay the graph out for the space it actually gets, so labels keep a readable size.
   const box = slot.getBoundingClientRect();
   slot.replaceWith(
-    drawGraph(graph, {
+    drawGraph(shown, {
       width: Math.max(320, Math.round(box.width)),
       height: Math.max(320, Math.round(box.height)),
       colour,

@@ -1,6 +1,7 @@
 // Drives the real web UI in Chromium. Run with: npm run e2e (needs `npx playwright install chromium` once).
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -346,6 +347,28 @@ test("phone layout has no sideways scrolling", async () => {
   await page.waitForSelector("#main .graph circle");
   assert.deepEqual(await overflowing(), []);
   await page.close();
+});
+
+test("a vault with thousands of notes still opens: the graph draws the best-connected 400", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vaultmind-big-"));
+  for (let i = 0; i < 1500; i++) writeFileSync(join(dir, `n${i}.md`), `# Note ${i}\n\nlinks to [[n${(i * 7) % 1500}]] and [[n${i % 10}]]`);
+  const big = new Vault({ dir, dbPath: ":memory:", embed: false });
+  big.sync();
+  const bigServer = await startWeb(big, PORT + 1);
+  try {
+    const page = await browser.newPage();
+    const started = Date.now();
+    await page.goto(`http://127.0.0.1:${PORT + 1}/`);
+    await page.waitForSelector("#main .graph circle", { timeout: 20_000 });
+    assert.equal(await page.locator("#main .graph circle").count(), 400);
+    assert.match(await page.textContent(".graph-head p") ?? "", /400 best-connected of 1,500 notes/);
+    assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+    await page.close();
+  } finally {
+    bigServer.close();
+    big.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("no console errors or CSP violations along the way", () => {
