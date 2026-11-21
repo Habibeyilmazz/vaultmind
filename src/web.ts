@@ -115,7 +115,9 @@ async function toRequest(req: IncomingMessage, port: number): Promise<Request> {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) if (typeof value === "string") headers.set(name, value);
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  return new Request(new URL(req.url ?? "/", `http://${req.headers.host ?? `127.0.0.1:${port}`}`), {
+  // Join, never resolve: new URL("//127.0.0.1/api/...", base) would take its host from the path and skip the Host check.
+  const path = req.url?.startsWith("/") ? req.url : "/";
+  return new Request(new URL(`http://${req.headers.host ?? `127.0.0.1:${port}`}${path}`), {
     method: req.method,
     headers,
     body: hasBody ? Buffer.concat(chunks) : undefined,

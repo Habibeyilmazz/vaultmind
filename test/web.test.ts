@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { test } from "node:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { ask, AskError } from "../src/ask.ts";
 import { renderNote } from "../src/render.ts";
 import { Vault } from "../src/vault.ts";
-import { handle } from "../src/web.ts";
+import { handle, startWeb } from "../src/web.ts";
 import { fakeEmbedder, tempVault } from "./helpers.ts";
 
 function openVault(embed = false) {
@@ -105,6 +105,20 @@ test("web server: static files, and no access from other hosts or methods", asyn
   assert.equal((await get(vault, "/../package.json")).response.status, 404);
   assert.equal((await handle(vault, new Request("http://evil.example:4100/api/status"))).status, 403, "DNS rebinding");
   assert.equal((await get(vault, "/api/status", { method: "DELETE" })).response.status, 405);
+});
+
+test("web server: a path starting with // cannot smuggle in a localhost host past the Host check", async (t) => {
+  // A DNS-rebinding page can fetch("/.//127.0.0.1/api/recent"): the browser sends that path with Host: evil.example.
+  const port = Number(process.env.WEB_TEST_PORT ?? 4105);
+  const server = await startWeb(openVault(), port);
+  t.after(() => server.close());
+  const status = (path: string, host: string) =>
+    new Promise<number>((resolve, reject) =>
+      request({ host: "127.0.0.1", port, path, headers: { host } }, (res) => resolve(res.resume().statusCode!)).on("error", reject).end(),
+    );
+  assert.equal(await status("//127.0.0.1/api/recent", `evil.example:${port}`), 403);
+  assert.equal(await status("//evil.example/api/recent", `127.0.0.1:${port}`), 404);
+  assert.equal(await status("/api/recent", `127.0.0.1:${port}`), 200);
 });
 
 test("ask endpoint: off without a key, and guarded against cross-site posts", async () => {
