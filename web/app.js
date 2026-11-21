@@ -91,12 +91,13 @@ async function runSearch() {
     if (!query) return await showRecent(run);
     const result = await api(`/api/search?limit=30&q=${encodeURIComponent(query)}`);
     if (run !== searchRun) return; // a newer keystroke already answered
+    const filterOnly = !/[\p{L}\p{N}]/u.test(query.replace(/(^|\s)(tag|path):("[^"]*"|\S+)/gi, " "));
     // On a first run the embeddings arrive while the page is open: keep the header in step with what search does.
-    if (status && status.semantic !== (result.mode === "hybrid")) {
+    // A filter with no words is a plain listing, always "keyword", so it says nothing about the model.
+    if (status && !filterOnly && status.semantic !== (result.mode === "hybrid")) {
       status.semantic = result.mode === "hybrid";
       showStatus();
     }
-    const filterOnly = !/[\p{L}\p{N}]/u.test(query.replace(/(^|\s)(tag|path):("[^"]*"|\S+)/gi, " "));
     renderList(
       `${plural(result.total, "note")} for “${query}”`,
       result.inScope === 0
@@ -483,6 +484,8 @@ async function showNote(path) {
   } catch (error) {
     if (mine !== view) return;
     currentPath = null;
+    markCurrent();
+    document.title = "vaultmind";
     side.hidden = true;
     main.replaceChildren(h("p", { class: "problem" }, error.message, " ", h("a", { href: "#/" }, "Back to the link graph")));
     return;

@@ -376,3 +376,28 @@ test("no console errors or CSP violations along the way", () => {
   const unexpected = problems.filter((p) => !/status of (404|503)/.test(p));
   assert.deepEqual(unexpected, []);
 });
+
+test("a tag-only search does not make the header claim keyword search", async () => {
+  const page = await browser.newPage();
+  page.on("pageerror", (error) => problems.push(error.message));
+  // Pretend the model is loaded: a filter-only listing is always "keyword" and must not flip the header.
+  await page.route("**/api/status", async (route) => route.fulfill({ json: { ...(await (await route.fetch()).json()), semantic: true } }));
+  await page.goto(`${BASE}/`);
+  await page.waitForSelector("#main .graph circle");
+  await page.fill("#q", "tag:baking");
+  await page.waitForSelector("#list-title >> text=2 notes");
+  assert.match((await page.textContent("#status")) ?? "", /hybrid search/);
+  await page.fill("#q", "bread");
+  await page.waitForFunction(() => document.querySelector("#status")?.textContent?.includes("keyword search"), null, { timeout: 5000 });
+  await page.close();
+});
+
+test("a missing note leaves no note marked in the list", async () => {
+  const page = await open("#/note/Inbox.md");
+  await page.waitForSelector("#list a[aria-current]");
+  await page.evaluate(() => (location.hash = "#/note/nope.md"));
+  await page.waitForSelector(".problem >> text=No such note");
+  assert.equal(await page.locator("#list a[aria-current]").count(), 0);
+  assert.equal(await page.title(), "vaultmind");
+  await page.close();
+});
