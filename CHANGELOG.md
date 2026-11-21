@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Design pass (2026-11-22)
+
+Looked at the running web UI at 1360, 900 and 390 px wide, light and dark, with the keyboard and with the server stopped.
+
+- Link graph zooms and pans: `−`, `+` and Reset buttons, the mouse wheel (only where the page itself does not scroll), drag, and two-finger pinch. Zooming spreads notes apart while circles and names keep their size. A drag that ends on a note does not open it; a note reached with Tab while zoomed in is brought into view.
+- Graph note names never overlap: best-connected notes are labelled first, a name that would cover another name or circle stays hidden until hover or zoom. The connections graph is drawn at its real column width so names stay 12.5 px.
+- Tablet widths (46 to 68 rem) keep the list beside the note, with connections below it; on a phone a note or answer opened from the list scrolls to the top of the screen.
+- States: "Opening your vault…" appears only if loading takes over 0.4 s; when the server stops answering the page says so and what to do; a `<noscript>` note.
+- The result count and hint are one live region; focus rings follow the rounded buttons; the search box's clear button is no longer system blue.
+- Search excerpts keep list items apart with `•` (they used to run together).
+- README screenshots retaken from the running app, plus a phone screenshot (`scripts/screenshots.ts` writes all three).
+
 Found by cloning the repository fresh, following the README literally, and reading the code as a reviewer.
 
 ### Fixed
@@ -26,7 +38,6 @@ Found by cloning the repository fresh, following the README literally, and readi
 
 - `ask` has still never run against the live Anthropic API (no key on the build machine). A new test sends it through the real SDK over HTTP to a local stand-in server (port 4108, `ASK_TEST_PORT` overrides), which covers the client wiring but not what the live API accepts.
 - English-only stop words, stemming and default embedding model.
-- No zoom or pan in the link graph.
 - The web UI has not been opened in a browser on Windows (its API tests do run there).
 - Symbolic links inside a vault are skipped.
 
@@ -63,4 +74,4 @@ First release.
 - `src/web.ts` exports `handle(vault, Request)`; test the API through it instead of opening a port. `e2e/ui.test.ts` starts a real server on port 4107 (`E2E_PORT` overrides).
 - Screenshots: `node src/cli.ts serve --vault examples/vault`, then `node scripts/screenshots.ts`.
 - Unit tests never download the model; `test/helpers.ts` has a hashing stand-in. To try the real model, run `node src/cli.ts index --vault examples/vault`.
-- Next steps, in rough order of value: tag/folder filter for `search_notes` and the UI, file watching, graph zoom, a tested multilingual model, npm publishing.
+- Next steps, in rough order of value: tag/folder filter for `search_notes` and the UI, file watching, graph filtering, a tested multilingual model, npm publishing.

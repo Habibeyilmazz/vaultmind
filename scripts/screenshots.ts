@@ -27,6 +27,16 @@ await dark.click("#list a");
 await dark.waitForSelector("#side .graph");
 await dark.mouse.move(700, 600);
 await dark.screenshot({ path: `${out}/note.png` });
+
+const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: "light" });
+phone.on("pageerror", (error) => errors.push(error.message));
+await phone.goto(base);
+await phone.waitForSelector(".graph circle");
+await phone.fill("#q", "sourdough");
+await phone.waitForSelector("#list mark");
+await phone.click("#list a");
+await phone.waitForSelector("#side .graph");
+await phone.screenshot({ path: `${out}/phone.png` });
 await browser.close();
 
 if (errors.length) {

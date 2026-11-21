@@ -7,6 +7,8 @@ It indexes your notes into one SQLite file, searches them by keyword and by mean
 
 ![Search results, a note, and its connections](docs/screenshots/note.png)
 
+<img src="docs/screenshots/phone.png" width="300" alt="A note opened from search on a 390-pixel-wide phone screen">
+
 ## Quickstart
 
 You need Node.js 22.18 or newer (`node --version`) and git. The repository ships a small made-up vault to try things on.
@@ -69,7 +71,7 @@ The tools hand note text to the model as written. If your vault holds clipped we
 - **Understands Obsidian notes.** YAML frontmatter (`title`, `tags`, `aliases`), inline `#tags` including `#nested/tags`, `[[wikilinks]]` with `|alias` and `#heading`, `![[embeds]]`, and relative Markdown links. Links resolve to the note next to the linking note first, then by path, file name and alias. Titles, aliases, headings and tags are all searchable.
 - **Heading-aware chunks.** Each section is indexed with its heading path (`Sourdough Starter > Feeding schedule`), so a hit points at the part of the note that matched.
 - **Incremental indexing.** Only new and changed files are read again. Deleted files leave the index.
-- **Web UI.** Search as you type, a reading view, related notes with reasons, the notes linked to the current one, and the link graph of the whole vault. Light and dark, works on a phone, keyboard friendly (`/` focuses search, arrow keys move through results).
+- **Web UI.** Search as you type, a reading view, related notes with reasons, the notes linked to the current one, and the link graph of the whole vault, which zooms and pans (buttons, wheel, drag, pinch) and never draws one note name over another. Light and dark, works on a phone, keyboard friendly (`/` focuses search, arrow keys move through results).
 - **Ask your vault (optional).** With `ANTHROPIC_API_KEY` set, `vaultmind ask "..."` and the Ask button in the web UI answer a question from the best matching sections and cite them. Without a key the button does not appear and nothing else changes.
 
 ## How it works
@@ -127,7 +129,7 @@ Two things use the network, both optional:
 
 - `ask` has never run against the live Anthropic API (no key was available while building). Tests cover it with a stubbed client and with the real SDK talking HTTP to a local stand-in server, so whether the live API accepts the request exactly as sent is still unconfirmed.
 - The default embedding model, the stop-word list and the stemmer are English. Notes in other languages get keyword search with diacritic folding; `--model` accepts another model but none has been tried.
-- The link graph has no zoom or pan. It reads well up to a few hundred notes and turns into a dense cloud beyond that.
+- The link graph has zoom and pan but no filtering. Names that would collide stay hidden until you zoom in or hover; beyond a few hundred notes the unzoomed view is a dense cloud.
 - Symbolic links inside the vault are not followed, so a linked note or folder is not indexed.
 - Search returns one hit per note (its best section). Each ranking contributes its 100 best sections, at most three per note, so very broad queries are not exhaustive.
 - Developed on macOS. CI runs the unit and MCP tests and the built CLI on Linux (Node 22.18 and 24) and on Windows (Node 22); a manually started workflow runs the real embedding model on Linux, Windows and macOS. The browser tests run on Linux only, so the web UI has not been looked at in a browser on Windows.
@@ -137,7 +139,7 @@ Two things use the network, both optional:
 
 - Filter search by tag and folder
 - File watching instead of the 30-second rescan
-- Zoom, pan and filtering in the link graph
+- Filtering in the link graph
 - A multilingual embedding model option that is actually tested
 - Publish to npm so `npx vaultmind` works
 - A vector index for vaults far beyond 50,000 sections
