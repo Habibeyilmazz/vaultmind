@@ -30,7 +30,7 @@ The first `index` downloads the embedding model (about 23 MB) from the Hugging F
 
 Recent npm versions end `npm install` with a warning that install scripts were blocked for `onnxruntime-node` and `protobufjs`. You can ignore it: the quickstart above was run from a fresh clone with those scripts blocked (macOS, npm 12) and the embeddings worked.
 
-Point `--vault` at your own notes folder when you are ready. vaultmind only reads your notes. The one thing it writes is its index, at `<vault>/.vaultmind/index.db` (use `--db` to put it elsewhere, and add `.vaultmind/` to `.gitignore` if the vault is a git repository).
+Point `--vault` at your own notes folder when you are ready. vaultmind only reads your notes (unless you start the MCP server with `--allow-write`, see below). The one thing it writes on its own is its index, at `<vault>/.vaultmind/index.db` (use `--db` to put it elsewhere, and add `.vaultmind/` to `.gitignore` if the vault is a git repository).
 
 ## Use your vault from Claude
 
@@ -62,7 +62,23 @@ Claude Desktop (`claude_desktop_config.json`):
 | `related_notes` | Lists notes connected to a note, with the reasons: links in either direction, shared tags, similar content. |
 | `recent_notes` | Lists the most recently modified notes, or with `tags` / `folder` every note that matches, newest first. |
 
-All four are read-only. Each takes `response_format: "markdown" | "json"`. The server indexes the vault when it starts and watches it while it runs: a note you add, edit, rename or delete is searchable about half a second later, so Claude can find a note it just wrote. Where the folder cannot be watched (some network drives), it rescans at most every 30 seconds, on the next tool call. If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
+All four are read-only. Each takes `response_format: "markdown" | "json"`.
+
+### Let Claude save notes (opt-in)
+
+Add `--allow-write` after `mcp` and the server gains a fifth tool, `write_note`, so Claude can remember things in your vault, not only look them up. This matters most in Claude Desktop, which cannot write files without another tool.
+
+```bash
+claude mcp add vaultmind -- node /absolute/path/to/vaultmind/dist/cli.js mcp --allow-write --vault /absolute/path/to/your/vault
+```
+
+`write_note` takes a vault-relative `path` (`.md` is added if missing, folders are created), Markdown `content`, and `append`. It never overwrites, renames or deletes: creating a note that exists fails, and `append: true` adds the text as a new paragraph at the end (creating the note if it is missing). It refuses absolute paths, `..`, dot-folders such as `.obsidian`, symbolic links, characters Obsidian does not allow in names, and anything that would make a note larger than 5 MB. The new text is searchable as soon as the tool returns. Without the flag the server stays read-only.
+
+Claude Code and Claude Desktop normally ask before calling an MCP tool you have not allowed, so you see each write first unless you allow `write_note` for good. A note Claude writes can hold text it read elsewhere, including clipped web pages; read what it saved if that matters to you.
+
+### Watching and freshness
+
+The server indexes the vault when it starts and watches it while it runs: a note you add, edit, rename or delete is searchable about half a second later, so Claude can find a note it just wrote. Where the folder cannot be watched (some network drives), it rescans at most every 30 seconds, on the next tool call. If the vault has never been embedded, search answers by keyword until the first embeddings are ready; run `index` beforehand to avoid that.
 
 The tools hand note text to the model as written. If your vault holds clipped web pages, their text reaches the model too.
 
@@ -104,7 +120,7 @@ Measured on an Apple M3 Pro with a generated vault of 2,000 notes (12,000 sectio
 vaultmind index              Build or update the index
 vaultmind search <query>     Search from the terminal (tag:<tag> and path:<folder> narrow it)
 vaultmind serve              Start the web UI on 127.0.0.1
-vaultmind mcp                Run the MCP server on stdio
+vaultmind mcp                Run the MCP server on stdio (read-only; --allow-write adds write_note)
 vaultmind ask <question>     Answer from your notes with citations (needs ANTHROPIC_API_KEY)
 
 --vault <dir>     Vault folder (default: $VAULTMIND_VAULT, else the current directory)
@@ -115,6 +131,7 @@ vaultmind ask <question>     Answer from your notes with citations (needs ANTHRO
 -n, --limit <n>   search: number of results
 --json            search, ask: print JSON
 -p, --port <n>    serve: port (default 4100)
+--allow-write     mcp: let Claude create notes and append to them
 ```
 
 Run it as `node dist/cli.js ...`, or `npm link` once to get a `vaultmind` command.
@@ -123,7 +140,7 @@ In a terminal, `search` prints titles and matched words in bold; piped, or with 
 
 ## Privacy
 
-Indexing, search, the MCP server and the web UI run entirely on your machine. The web UI listens on `127.0.0.1` only, refuses requests addressed to other host names, and never loads remote images from notes.
+Indexing, search, the MCP server and the web UI run entirely on your machine. Nothing but `write_note`, which is off unless you pass `--allow-write`, changes a note. The web UI listens on `127.0.0.1` only, refuses requests addressed to other host names, and never loads remote images from notes.
 
 Two things use the network, both optional:
 
