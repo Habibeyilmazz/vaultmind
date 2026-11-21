@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { type FSWatcher, statSync, watch } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Db } from "./db.ts";
 import { openDb } from "./db.ts";
@@ -32,6 +32,8 @@ export class Vault {
   #lastSync = 0;
   #embedStarted = false;
   #queue: Promise<unknown> = Promise.resolve();
+  #watcher?: FSWatcher;
+  #debounce?: NodeJS.Timeout;
 
   constructor(options: VaultOptions) {
     this.dir = resolve(options.dir);
@@ -91,6 +93,39 @@ export class Vault {
     }
   }
 
+  /**
+   * Re-indexes shortly after a file in the vault changes, instead of waiting for the 30 s rescan.
+   * Returns false when the platform cannot watch the folder; keepFresh() still rescans then.
+   */
+  watch(delayMs = 300): boolean {
+    if (this.#watcher) return true;
+    try {
+      this.#watcher = watch(this.dir, { recursive: true }, (_event, filename) => {
+        // Our own index lives in .vaultmind; dot-folders and node_modules are never indexed either.
+        if (filename && String(filename).split(/[\\/]/).some((part) => part.startsWith(".") || part === "node_modules")) return;
+        this.#lastSync = 0; // a query arriving before the timer fires re-indexes too
+        clearTimeout(this.#debounce);
+        this.#debounce = setTimeout(() => {
+          try {
+            this.keepFresh();
+          } catch (error) {
+            this.#log(`Re-indexing failed: ${error instanceof Error ? error.message : error}`);
+          }
+        }, delayMs).unref();
+      });
+    } catch (error) {
+      this.#log(`Not watching the vault for changes (${error instanceof Error ? error.message : error}); rescanning at most every 30 s instead.`);
+      return false;
+    }
+    this.#watcher.on("error", (error) => {
+      this.#log(`Stopped watching the vault for changes (${error.message}); rescanning at most every 30 s instead.`);
+      this.#watcher?.close();
+      this.#watcher = undefined;
+    });
+    this.#watcher.unref();
+    return true;
+  }
+
   /** Waits for background embedding to finish. */
   async idle(): Promise<void> {
     await this.#loading;
@@ -98,6 +133,9 @@ export class Vault {
   }
 
   close(): void {
+    this.#watcher?.close();
+    this.#watcher = undefined;
+    clearTimeout(this.#debounce);
     this.db.close();
   }
 }

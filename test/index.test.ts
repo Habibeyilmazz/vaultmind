@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { openDb } from "../src/db.ts";
 import { embedPending, indexVault, listNotes } from "../src/indexer.ts";
 import { allTags, filterNotes, ftsQuery, getNote, HL_START, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "../src/search.ts";
+import { Vault } from "../src/vault.ts";
 import { fakeEmbedder, tempVault } from "./helpers.ts";
 
 const execFileAsync = promisify(execFile);
@@ -327,4 +328,50 @@ test("a link written with a precomposed é finds a note whose name uses a combin
   const note = getNote(db, "Linker");
   assert.deepEqual(note?.links.map((l) => l.title).sort(), ["Decomposed", "Naive"]);
   assert.equal(getNote(db, "café")?.title, "Decomposed");
+});
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("a watched vault re-indexes on its own when a note is added or deleted", async () => {
+  const dir = tempVault();
+  const vault = new Vault({ dir, dbPath: ":memory:", embed: false });
+  const has = (path: string) => Boolean(vault.db.prepare("SELECT 1 FROM notes WHERE path = ?").get(path));
+  try {
+    vault.keepFresh();
+    assert.equal(vault.watch(50), true);
+    mkdirSync(join(dir, "new folder"));
+    writeFileSync(join(dir, "new folder", "zebracorn.md"), "# Zebracorn\n");
+    for (let waited = 0; !has("new folder/zebracorn.md") && waited < 5000; waited += 50) await sleep(50);
+    assert.ok(has("new folder/zebracorn.md"), "new note was not indexed within 5 s");
+
+    rmSync(join(dir, "new folder", "zebracorn.md"));
+    for (let waited = 0; has("new folder/zebracorn.md") && waited < 5000; waited += 50) await sleep(50);
+    assert.ok(!has("new folder/zebracorn.md"), "deleted note was still indexed after 5 s");
+  } finally {
+    vault.close();
+  }
+});
+
+test("a change in a watched vault makes the next query rescan, unless it is inside a dot-folder", async () => {
+  const dir = tempVault();
+  const vault = new Vault({ dir, dbPath: ":memory:", embed: false });
+  try {
+    vault.watch(60_000); // long delay: only the next query may re-index
+    await sleep(500); // macOS may still report the fixture copy made just before watching
+    vault.sync();
+    mkdirSync(join(dir, ".obsidian"), { recursive: true });
+    writeFileSync(join(dir, ".obsidian", "workspace.json"), "{}");
+    await sleep(400);
+    assert.equal(vault.sync(30_000), undefined, ".obsidian change caused a rescan");
+
+    writeFileSync(join(dir, "zebracorn.md"), "# Zebracorn\n");
+    let stats;
+    for (let waited = 0; !stats && waited < 5000; waited += 50) {
+      await sleep(50);
+      stats = vault.sync(30_000);
+    }
+    assert.equal(stats?.added, 1);
+  } finally {
+    vault.close();
+  }
 });

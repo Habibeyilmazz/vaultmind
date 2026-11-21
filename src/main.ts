@@ -137,6 +137,7 @@ export async function main(argv: string[]): Promise<number> {
 
     // Long-running commands: index now, embed in the background, keep picking up edits.
     vault.keepFresh();
+    vault.watch();
     if (command === "serve") {
       const port = integer(values.port, "port", 1, 65535);
       await startWeb(vault, port);
