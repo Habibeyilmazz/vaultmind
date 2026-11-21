@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Performance, accessibility and maintainability pass, round 2 (2026-11-22)
+
+Checked the previous round's gaps first. One was a real bug: the file watcher ignored every dot-folder, including `.obsidian/app.json`, so a changed "Excluded files" setting only applied at the next rescan.
+
+- Fixed: the watcher now reacts to `.obsidian/app.json` (and only that file in a dot-folder), so the setting applies about half a second after saving. Test; it fails without the fix (the test waits out the rescan `watch()` makes on start, so only the watcher can notice).
+- Re-measured, nothing worth changing: `search` start-up 46 ms; web assets 28 KB `app.js`, 13 KB `style.css`, 2 KB HTML (unchanged); all six runtime dependencies are imported by `src`, nothing to delete. Lighthouse was not run; the last round's axe-core results stand and no markup changed.
+- Not done: Obsidian itself, Windows by eye, Claude Desktop, live `ask`. The commit trailer names the model that wrote each commit.
+
 ### Obsidian's Excluded files (2026-11-22)
 
 Used the CLI on a copy of the example vault with a `Templates/` folder, as most Obsidian vaults have: template text (`{{title}}`, placeholder checklists) showed up in search results, and Obsidian's own setting for hiding such folders was ignored. The previous round's gaps were checked: CJK per-character matching is a documented trade-off (recall over precision), not a bug; Windows by eye, Claude Desktop and live `ask` still cannot be done from here.
