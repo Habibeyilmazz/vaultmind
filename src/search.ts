@@ -95,7 +95,6 @@ const RRF_K = 60;
 interface Candidate {
   noteId: number;
   chunkId: number;
-  snippet?: string;
 }
 
 // Questions like "how do I keep my starter alive" would otherwise be ranked by their filler words. English only.
@@ -121,12 +120,11 @@ function keywordCandidates(db: Db, query: string, prefix: boolean, scope?: Set<n
     .prepare(
       `WITH hits AS MATERIALIZED (
          SELECT chunks_fts.rowid AS chunkId, c.note_id AS noteId,
-                snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS snippet,
                 bm25(chunks_fts, 4.0, 2.0, 1.0, 2.0) AS score
          FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
          WHERE chunks_fts MATCH ? AND (? IS NULL OR c.note_id IN (SELECT value FROM json_each(?)))),
        ranked AS (SELECT *, row_number() OVER (PARTITION BY noteId ORDER BY score) AS nth FROM hits)
-       SELECT chunkId, noteId, snippet FROM ranked WHERE nth <= ? ORDER BY score LIMIT ?`,
+       SELECT chunkId, noteId FROM ranked WHERE nth <= ? ORDER BY score LIMIT ?`,
     )
     .all(match, scope ? 1 : null, JSON.stringify(scope ? [...scope] : []), PER_NOTE, CANDIDATES) as unknown as Candidate[];
 }
@@ -214,7 +212,6 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
     list.forEach((candidate, rank) => {
       const entry = fused.get(candidate.chunkId) ?? { ...candidate, score: 0 };
       entry.score += 1 / (RRF_K + rank + 1);
-      entry.snippet ??= candidate.snippet;
       fused.set(candidate.chunkId, entry);
     });
   }
@@ -225,16 +222,22 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
   const chunkRow = db.prepare(
     "SELECT c.note_id AS noteId, c.heading, c.text, c.line, n.path, n.title FROM chunks c JOIN notes n ON n.id = c.note_id WHERE c.id = ?",
   );
+  const match = ftsQuery(query, prefix);
+  const snippetRow = match
+    ? db.prepare("SELECT snippet(chunks_fts, 2, char(1), char(2), '…', 28) AS s FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid = ?")
+    : undefined;
   const hits: Hit[] = [];
   for (const entry of ranked.slice(offset, offset + limit)) {
     const row = chunkRow.get(entry.chunkId) as { noteId: number; heading: string; text: string; line: number; path: string; title: string } | undefined;
     if (!row) continue;
+    // snippet() costs ~7 ms a row on a 50k-section vault, so it runs for the returned page only, never for every match.
+    const snippet = used === "semantic" ? undefined : (snippetRow?.get(match, entry.chunkId) as { s: string } | undefined)?.s;
     hits.push({
       path: row.path,
       title: row.title,
       heading: row.heading,
       line: row.line,
-      snippet: excerpt(row.text, entry.snippet),
+      snippet: excerpt(row.text, snippet),
       text: row.text,
       tags: tagsOf(db, row.noteId),
       score: entry.score,

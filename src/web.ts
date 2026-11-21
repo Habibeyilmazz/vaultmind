@@ -5,6 +5,7 @@ import { basename } from "node:path";
 import { ask, AskError, askAvailable } from "./ask.ts";
 import { VERSION } from "./mcp.ts";
 import { renderNote } from "./render.ts";
+import { buildResolver } from "./indexer.ts";
 import { getNote, linkGraph, parseQuery, recentNotes, relatedNotes, search, stats } from "./search.ts";
 import type { Vault } from "./vault.ts";
 
@@ -95,7 +96,14 @@ export async function handle(vault: Vault, request: Request): Promise<Response> 
     case "/api/note": {
       const note = getNote(db, param("path"));
       if (!note) return fail(404, "No such note. It may have been renamed or deleted.");
-      return json({ ...note, html: renderNote(note.body, (target) => getNote(db, target, note.path)?.path) });
+      // One resolver for the whole note: building it reads every note, so once per link it cost 250 ms on a 10,000-note vault.
+      const resolve = buildResolver(db);
+      const pathOf = db.prepare("SELECT path FROM notes WHERE id = ?");
+      const html = renderNote(note.body, (target) => {
+        const id = resolve(target, note.path);
+        return id === undefined ? undefined : (pathOf.get(id) as { path: string }).path;
+      });
+      return json({ ...note, html });
     }
     case "/api/related": {
       const related = await relatedNotes(db, param("path"), 8);
