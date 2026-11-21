@@ -43,7 +43,8 @@ export function renderNote(body: string, resolve: (target: string) => string | u
       {
         name: "wikilink",
         level: "inline",
-        start: (src) => src.match(/!?\[\[/)?.index,
+        // No start(): marked already stops plain text at "[" and "!", and a start() that searches the rest of the
+        // text would run once per "[" in a paragraph, which is quadratic on a long run of "[a](".
         tokenizer(src) {
           // Same classes as WIKILINK in parse.ts: no "[" inside, so a long run of "[[" stays linear.
           const match = /^!?\[\[([^[\]|#]*)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]/.exec(src);
