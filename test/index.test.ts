@@ -305,3 +305,14 @@ indexVault(openDb(process.argv[1]), process.argv[2]);`;
     assert.equal(failed.length, 0, String((failed[0] as PromiseRejectedResult | undefined)?.reason?.stderr ?? ""));
   }
 });
+
+test("a long excerpt is never cut through an emoji", async () => {
+  const dir = tempVault();
+  writeFileSync(join(dir, "Emoji.md"), `---\ntags: [emojitest]\n---\n${"a".repeat(219)}😀😀 and more`);
+  const db = openDb(":memory:");
+  indexVault(db, dir);
+  const { text, filter } = parseQuery("tag:emojitest");
+  const { hits } = await search(db, text, { filter });
+  assert.equal(hits.length, 1);
+  assert.doesNotMatch(hits[0].snippet, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+});

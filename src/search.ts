@@ -246,7 +246,7 @@ export async function search(db: Db, query: string, options: SearchOptions = {})
 /** A short one-line excerpt: the FTS snippet when there is one, else the start of the section. */
 function excerpt(text: string, snippet?: string): string {
   // Wikilink brackets and table rules are noise in a short excerpt; list items run together without a bullet.
-  return (snippet ?? (text.length > 220 ? `${text.slice(0, 220)}…` : text))
+  return (snippet ?? (text.length > 220 ? `${Array.from(text).slice(0, 220).join("")}…` : text))
     .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "• ")
     .replace(/\[\[|\]\]/g, "")
     .replace(/\||-{3,}/g, " ")
