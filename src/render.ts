@@ -57,5 +57,19 @@ export function renderNote(body: string, resolve: (target: string) => string | u
       },
     ],
   });
-  return marked.parse(body, { async: false });
+  // marked is quadratic to cubic in the number of emphasis delimiters in one block ("*a_" x 8000 took 6 s). No real block has
+  // thousands, so in a block that does they are shown as plain characters.
+  // shortcut: this also escapes them inside a code fence of such a block; upgrade if that ever matters.
+  const safe = body
+    .split(/(\n[ \t]*\n)/)
+    .map((block) => ((block.match(/[*_~]/g)?.length ?? 0) > MAX_DELIMITERS ? block.replace(/[*_~]/g, "\\$&") : block))
+    .join("");
+  try {
+    return marked.parse(safe, { async: false });
+  } catch {
+    // Thousands of nested quotes or list items overflow marked's recursion: show the note as text instead of failing.
+    return `<pre>${escapeHtml(body)}</pre>`;
+  }
 }
+
+const MAX_DELIMITERS = 2000;
